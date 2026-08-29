@@ -525,8 +525,12 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  border: 0;
+  padding: 0;
   color: var(--muted);
+  background: none;
   font-size: 13px;
+  cursor: pointer;
 }
 
 .message-panel {
@@ -714,6 +718,10 @@ textarea {
   padding: 20px 24px;
 }
 
+.member.muted {
+  opacity: 0.55;
+}
+
 .member h3 {
   margin-bottom: 2px;
   font-size: 21px;
@@ -800,6 +808,12 @@ textarea {
   box-shadow: none;
 }
 
+.save-btn.saved {
+  border-color: var(--peach);
+  color: #a3521f;
+  background: var(--peach-soft);
+}
+
 .activity-card h3,
 .news-card h3 {
   margin-bottom: 10px;
@@ -850,6 +864,7 @@ textarea {
   border-radius: 16px;
   padding: 20px;
   background: white;
+  cursor: pointer;
 }
 
 .toggle-row.on {
@@ -863,6 +878,7 @@ textarea {
   position: relative;
   border-radius: 999px;
   background: #d8e0e6;
+  transition: background 0.15s ease;
 }
 
 .switch::after {
@@ -874,6 +890,7 @@ textarea {
   left: 4px;
   border-radius: 50%;
   background: white;
+  transition: left 0.15s ease;
 }
 
 .toggle-row.on .switch {
