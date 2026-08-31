@@ -14,6 +14,10 @@
 
 Attribution: City of Melbourne Open Data, *Landmarks and places of interest, including schools, theatres, health services, sports facilities, places of worship, galleries and museums*.
 
+## Repository reproducibility
+
+`data/raw/` contains an unchanged local copy of the CC BY City of Melbourne source dataset. It is included so that the Iteration 1 notebook can reproduce the original data understanding, cleaning, and validation steps after a teammate clones the repository. Attribution remains required under the CC BY licence. The datasets in `data/processed/` are derived from this raw source.
+
 ## AgeTogether Iteration 1 use
 
 The original local dataset contains 242 records. The Iteration 1 data pipeline validates the data, prepares coordinates, applies a transparent product-relevance classification, and produces 115 Tier 1 Discovery Places for local discovery. The processed files are prepared for frontend integration.
