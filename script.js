@@ -1,6 +1,6 @@
 const app = document.querySelector("#app");
 const pet = document.querySelector("#pet");
-const nav = [...document.querySelectorAll(".bottom-nav button")];
+const nav = [...document.querySelectorAll(".top-nav button")];
 
 // Current visible page. This simple router lets the prototype work like a
 // multi-page app while still using one static HTML file.
@@ -77,21 +77,36 @@ function nextColor(existingCount) {
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
-  // Landing page: each card is generated from function arguments rather than
-  // hard-coded HTML blocks. Clicking a card changes the current route.
+  // Landing page: explains the purpose of the service and gives simple entry
+  // points into the main tools.
   app.innerHTML = `
     <section class="home-wrap">
-      <div class="check-mark">&#x2713;</div>
-      <h1>AgeTogether Australia</h1>
-      <p>A simple way to stay connected with friends and family.</p>
-      <section class="menu-list">
-        ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "A private board for trusted care notes, reminders, and messages from your family.")}
-        ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A shared noticeboard with friends you already know - calm, low-pressure connection.")}
-        ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Find nearby community activities and helpful local news for healthy ageing.")}
-        ${homeCard("profile", "profile-card", "&#x1F464;", "Profile", "Manage your personal information and privacy settings.")}
-        ${homeCard("ai", "ai-card", "&#x1F43E;", "AI Companion", "A friendly helper for simple questions, daily suggestions, and safety tips.")}
+      <section class="home-hero">
+        <div class="hero-copy">
+          <span class="home-kicker">Support for healthy ageing</span>
+          <h1>AgeTogether Australia</h1>
+          <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
+          <div class="hero-actions">
+            <button class="get-started" data-route="family">Get Started</button>
+            <button class="outline-btn" data-route="social">Explore Activities</button>
+          </div>
+        </div>
+        <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
+          <img src="https://images.unsplash.com/photo-1764173040319-4db683637611?auto=format&fit=crop&w=1200&q=80" alt="Two older adults smiling together in a park" />
+        </div>
       </section>
-      <button class="get-started" data-route="family">Get Started</button>
+
+      <section class="home-section">
+        <div class="section-heading">
+          <span class="home-kicker">Main areas</span>
+          <h2>Choose where to go</h2>
+        </div>
+        <section class="menu-list">
+          ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members.")}
+          ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know.")}
+          ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information.")}
+        </section>
+      </section>
     </section>
   `;
 }
