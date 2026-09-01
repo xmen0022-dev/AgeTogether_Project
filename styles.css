@@ -1461,6 +1461,12 @@ textarea {
 /* Companion setup panel                                                */
 /* ------------------------------------------------------------------ */
 
+/* Leaves no trace if pet.js is absent: renderAI always creates this container,
+   but an unfilled panel would still paint as an empty card. */
+#pet-setup:empty {
+  display: none;
+}
+
 .pet-setup-row {
   margin: 16px 0 8px;
   display: flex;
