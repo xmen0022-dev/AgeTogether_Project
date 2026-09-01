@@ -1492,6 +1492,80 @@ textarea {
   cursor: pointer;
 }
 
+.pet-history-title {
+  margin-top: 24px;
+}
+
+.pet-history {
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 12px;
+  list-style: none;
+}
+
+.pet-history-item {
+  position: relative;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--peach-soft);
+}
+
+.pet-history-item.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+/* Generous target: this is the main control on the page for an older user. */
+.pet-history-pick {
+  width: 100%;
+  height: 104px;
+  display: block;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.pet-history-pick img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+.pet-history-delete {
+  width: 30px;
+  height: 30px;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: white;
+  color: #8a6a60;
+  box-shadow: var(--soft-shadow);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pet-history-badge {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  translate: -50% 0;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--green);
+  color: white;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
 .pet-preview {
   margin-top: 16px;
   padding: 18px;

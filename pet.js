@@ -15,7 +15,14 @@
 /* Configuration                                                        */
 /* ------------------------------------------------------------------ */
 
-const STORAGE_KEY = "agetogether.companion.photo.v1";
+const STORAGE_KEY = "agetogether.companion.photo.v1"; // legacy single-photo key, migrated on load
+const LIBRARY_KEY = "agetogether.companion.library.v1";
+
+/** Kept small on purpose: each entry is a data URL and localStorage holds ~5 MB. */
+const MAX_COMPANIONS = 12;
+
+/** Stored larger than it is displayed so it stays sharp, but not 768px larger. */
+const STORED_DIMENSION = 512;
 
 /** Phone photos are far larger than the companion needs on screen. */
 const MAX_DIMENSION = 768;
@@ -160,21 +167,78 @@ function circularCrop(canvas) {
 /* Storage                                                              */
 /* ------------------------------------------------------------------ */
 
-function loadStoredPhoto() {
+/**
+ * The library is `{ activeId, items: [{ id, fingerprint, dataUrl, label, createdAt }] }`.
+ * Only the finished cut-out is kept - the original photo is never needed again
+ * and would double what we store.
+ */
+function loadLibrary() {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(LIBRARY_KEY);
+    if (stored) {
+      const library = JSON.parse(stored);
+      if (Array.isArray(library?.items)) return library;
+    }
+
+    // Migrate the single-photo format that shipped first.
+    const legacy = localStorage.getItem(STORAGE_KEY);
+    if (legacy) {
+      const migrated = {
+        activeId: "legacy",
+        items: [{ id: "legacy", fingerprint: null, dataUrl: legacy, label: "Your companion", createdAt: Date.now() }],
+      };
+      saveLibrary(migrated);
+      localStorage.removeItem(STORAGE_KEY);
+      return migrated;
+    }
   } catch {
-    return null; // private browsing, blocked site data - the default companion still works
+    // Private browsing, blocked site data, or corrupt JSON. The drawn
+    // companion still works, so fall through to an empty library.
   }
+  return { activeId: null, items: [] };
 }
 
-function storePhoto(dataUrl) {
+/**
+ * Saves, dropping the oldest inactive companion whenever the browser refuses
+ * on quota. Data URLs are large and localStorage is only about 5 MB, so this
+ * has to degrade by forgetting rather than by failing.
+ */
+function saveLibrary(library) {
+  const working = { ...library, items: [...library.items] };
+
+  for (let attempt = 0; attempt < MAX_COMPANIONS + 1; attempt += 1) {
+    try {
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(working));
+      return { saved: true, evicted: library.items.length - working.items.length };
+    } catch {
+      const oldest = working.items
+        .filter((item) => item.id !== working.activeId)
+        .sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!oldest) return { saved: false, evicted: library.items.length - working.items.length };
+      working.items = working.items.filter((item) => item !== oldest);
+    }
+  }
+  return { saved: false, evicted: 0 };
+}
+
+function activeDataUrl(library) {
+  return library.items.find((item) => item.id === library.activeId)?.dataUrl ?? null;
+}
+
+/**
+ * Identifies a photo so the same one is never cut out twice - that is the slow
+ * step, and on a first run it also pulls down the model.
+ *
+ * Hashing the bytes catches the same picture under a different filename.
+ * `crypto.subtle` needs a secure context, which `file://` is not, so fall back
+ * to the file's own metadata there rather than losing de-duplication entirely.
+ */
+async function fingerprintFile(file) {
   try {
-    if (dataUrl) localStorage.setItem(STORAGE_KEY, dataUrl);
-    else localStorage.removeItem(STORAGE_KEY);
-    return true;
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch {
-    return false;
+    return `meta:${file.name}:${file.size}:${file.lastModified}`;
   }
 }
 
@@ -400,7 +464,7 @@ function mountSetup() {
   const host = document.querySelector("#pet-setup");
   if (!host) return;
 
-  const hasPhoto = Boolean(loadStoredPhoto());
+  const library = loadLibrary();
 
   host.innerHTML = `
     <h2>Give your companion a face</h2>
@@ -411,18 +475,80 @@ function mountSetup() {
         &#x1F4F7; Choose a photo
         <input type="file" id="pet-file" accept="image/*" hidden />
       </label>
-      ${hasPhoto ? `<button class="outline-btn" id="pet-remove">Use the default companion</button>` : ""}
+      ${library.activeId ? `<button class="outline-btn" id="pet-remove">Use the drawn companion</button>` : ""}
     </div>
     <p class="muted small" id="pet-status" role="status"></p>
-    <div class="pet-preview" id="pet-preview" hidden></div>
+    ${historyMarkup(library)}
   `;
 
   host.querySelector("#pet-file").addEventListener("change", onPhotoChosen);
+
   host.querySelector("#pet-remove")?.addEventListener("click", () => {
-    storePhoto(null);
+    const current = loadLibrary();
+    current.activeId = null;
+    saveLibrary(current);
     applyPhoto(null);
     mountSetup();
   });
+
+  host.querySelector("#pet-history")?.addEventListener("click", onHistoryClick);
+}
+
+/** Past cut-outs, newest first. Choosing one is instant: the slow work is done. */
+function historyMarkup(library) {
+  if (!library.items.length) return "";
+
+  const cards = [...library.items]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((item) => {
+      const active = item.id === library.activeId;
+      return `
+        <li class="pet-history-item ${active ? "active" : ""}">
+          <button class="pet-history-pick" data-pick="${item.id}"
+                  aria-label="Use ${escapeHtml(item.label)}"${active ? ' aria-current="true"' : ""}>
+            <img src="${item.dataUrl}" alt="" />
+          </button>
+          <button class="pet-history-delete" data-delete="${item.id}"
+                  aria-label="Delete ${escapeHtml(item.label)}">&times;</button>
+          ${active ? `<span class="pet-history-badge">In use</span>` : ""}
+        </li>
+      `;
+    })
+    .join("");
+
+  return `
+    <h3 class="pet-history-title">Companions you have made</h3>
+    <p class="muted small">Tap one to bring it back. They are already cut out, so it happens straight away.</p>
+    <ul class="pet-history" id="pet-history">${cards}</ul>
+  `;
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function onHistoryClick(event) {
+  const pick = event.target.closest("[data-pick]");
+  const remove = event.target.closest("[data-delete]");
+  if (!pick && !remove) return;
+
+  const library = loadLibrary();
+
+  if (pick) {
+    library.activeId = pick.dataset.pick;
+    saveLibrary(library);
+    applyPhoto(activeDataUrl(library));
+    mountSetup();
+    setStatus("Welcome back!");
+    react("happy");
+    return;
+  }
+
+  library.items = library.items.filter((item) => item.id !== remove.dataset.delete);
+  if (library.activeId === remove.dataset.delete) library.activeId = null;
+  saveLibrary(library);
+  applyPhoto(activeDataUrl(library));
+  mountSetup();
 }
 
 function setStatus(message) {
@@ -432,34 +558,56 @@ function setStatus(message) {
 
 async function onPhotoChosen(event) {
   const file = event.target.files?.[0];
+  event.target.value = ""; // let the same file be chosen again later
   if (!file) return;
 
-  setStatus("Getting your photo ready. This can take a few moments...");
-
   try {
-    const image = await readFileAsImage(file);
-    const small = downscale(image);
+    // De-duplicate before doing any work: cutting out is the slow step, and on
+    // a first run it also downloads the model.
+    const fingerprint = await fingerprintFile(file);
+    const library = loadLibrary();
+    const existing = library.items.find((item) => item.fingerprint === fingerprint);
 
-    const cutOut = await removeBackground(small);
-    const finished = cutOut ? trimTransparentEdges(cutOut) : circularCrop(small);
+    if (existing) {
+      library.activeId = existing.id;
+      saveLibrary(library);
+      applyPhoto(existing.dataUrl);
+      mountSetup();
+      setStatus("You have used this photo before, so we brought that one back straight away.");
+      react("happy");
+      return;
+    }
+
+    setStatus("Getting your photo ready. This can take a few moments...");
+
+    const image = await readFileAsImage(file);
+    const working = downscale(image);
+    const cutOut = await removeBackground(working);
+    const finished = downscale(cutOut ? trimTransparentEdges(cutOut) : circularCrop(working), STORED_DIMENSION);
     const dataUrl = finished.toDataURL("image/png");
 
     applyPhoto(dataUrl);
-    const saved = storePhoto(dataUrl);
 
-    // Rebuild the panel first so it picks up the new "remove" button, then
-    // fill in the parts that describe what just happened.
+    const entry = {
+      id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      fingerprint,
+      dataUrl,
+      label: file.name.replace(/\.[^.]+$/, "") || "Your companion",
+      createdAt: Date.now(),
+    };
+
+    const updated = loadLibrary();
+    updated.items = [...updated.items, entry].slice(-MAX_COMPANIONS);
+    updated.activeId = entry.id;
+    const { saved, evicted } = saveLibrary(updated);
+
     mountSetup();
 
-    const preview = document.querySelector("#pet-preview");
-    if (preview) {
-      preview.hidden = false;
-      preview.innerHTML = `<img src="${dataUrl}" alt="Your companion" />`;
-    }
-
-    if (!saved) setStatus("Your companion is ready, but this device could not save it for next time.");
+    if (!saved) setStatus("Your companion is on the screen, but this device could not save it for next time.");
+    else if (evicted > 0) setStatus("All done. There was no room left, so the oldest companion was removed.");
     else if (cutOut) setStatus("All done - your companion is on the screen.");
     else setStatus("All done. We could not remove the background, so the photo is shown in a circle.");
+    react("happy");
   } catch (error) {
     console.error("[companion]", error);
     setStatus("Sorry, that photo could not be used. Please try a different one.");
@@ -470,7 +618,7 @@ async function onPhotoChosen(event) {
 /* Start                                                                */
 /* ------------------------------------------------------------------ */
 
-applyPhoto(loadStoredPhoto());
+applyPhoto(activeDataUrl(loadLibrary()));
 startLife();
 
 // renderAI() calls this after it rebuilds the AI Companion page.
