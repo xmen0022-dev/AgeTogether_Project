@@ -516,10 +516,13 @@ function renderAI() {
           <button class="primary">&#x1F33F; Daily Suggestion</button>
           <button class="blue-btn">&#x1F6E1; Safety Tip</button>
         </div>
+        <section class="panel" id="pet-setup"></section>
         <p class="muted secure-copy">&#x1F512; Your conversations are private and secure.</p>
       </section>
     </section>
   `;
+
+  window.AgePet?.mountSetup();
 }
 
 /* ------------------------------------------------------------------ */
