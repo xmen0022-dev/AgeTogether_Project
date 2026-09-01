@@ -17,7 +17,7 @@
 
 const STORAGE_KEY = "agetogether.companion.photo.v1";
 
-/** Phone photos are far larger than a 88px companion needs. */
+/** Phone photos are far larger than the companion needs on screen. */
 const MAX_DIMENSION = 768;
 
 /** Alpha below this counts as background when trimming. */
@@ -60,7 +60,7 @@ function readFileAsImage(file) {
   });
 }
 
-/** Shrink before segmenting - it is much faster and the result is only 88px on screen. */
+/** Shrink before segmenting - much faster, and the result is only ~170px on screen. */
 function downscale(image, maxDimension = MAX_DIMENSION) {
   const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
   const canvas = document.createElement("canvas");
@@ -123,10 +123,7 @@ function trimTransparentEdges(canvas) {
 
   if (right < left || bottom < top) return canvas; // nothing opaque - leave it alone
 
-  // Clamp the source rectangle to the canvas, otherwise a subject touching an
-  // edge makes drawImage read past it and pads the result with transparency -
-  // which is exactly what this function exists to remove.
-  // Clamp each edge independently. Clamping only the origin and keeping the
+  // Clamp each edge independently. Clamping only the origin while keeping the
   // full padded size pushes the extra margin onto the opposite edge, which
   // shifts the subject off centre - and any margin left below the feet moves
   // the `transform-origin: bottom` pivot the animations rely on.
@@ -193,7 +190,7 @@ function applyPhoto(dataUrl) {
   if (!dataUrl) {
     photo?.remove();
     petButton.classList.remove("has-photo");
-    petButton.setAttribute("aria-label", "Open AI Companion");
+    petButton.setAttribute("aria-label", "Pet your companion");
     return;
   }
 
@@ -205,7 +202,7 @@ function applyPhoto(dataUrl) {
   }
   photo.src = dataUrl;
   petButton.classList.add("has-photo");
-  petButton.setAttribute("aria-label", "Open your companion");
+  petButton.setAttribute("aria-label", "Pet your companion");
 }
 
 /* ------------------------------------------------------------------ */
@@ -222,8 +219,8 @@ function applyPhoto(dataUrl) {
  * short it is.
  */
 const REACTIONS = {
-  hop: { className: "is-hopping", durationMs: 680 },
-  happy: { className: "is-hopping", durationMs: 680, heart: true },
+  hop: { className: "is-hopping", durationMs: 680, particles: 1 },
+  happy: { className: "is-hopping", durationMs: 680, particles: 3 },
   tap: { className: "is-tapping", durationMs: 240 },
   perk: { className: "is-perked", durationMs: 900 },
 };
@@ -243,16 +240,91 @@ function react(pose) {
   clearTimeout(reactionTimer);
   reactionTimer = setTimeout(() => petButton.classList.remove(reaction.className), reaction.durationMs);
 
-  if (reaction.heart) floatHeart();
+  if (reaction.particles) emitParticles(reaction.particles);
 }
 
-function floatHeart() {
-  const heart = document.createElement("span");
-  heart.className = "pet-heart";
-  heart.textContent = "♥";
-  heart.setAttribute("aria-hidden", "true");
-  petButton.append(heart);
-  setTimeout(() => heart.remove(), 900);
+/**
+ * Pixel-art particles, drawn as SVG squares rather than shipped as images:
+ * they stay crisp at any size, need no asset file, and carry no licence.
+ * `shadeFrom` is the first row painted in the darker tone, which is what gives
+ * the shapes their bit of depth.
+ */
+const PIXEL_ART = {
+  heart: {
+    tones: ["#e8336e", "#c81f57"],
+    shadeFrom: 4,
+    grid: [
+      ".XX..XX.",
+      "XXXXXXXX",
+      "XXXXXXXX",
+      "XXXXXXXX",
+      ".XXXXXX.",
+      "..XXXX..",
+      "...XX...",
+    ],
+  },
+  star: {
+    tones: ["#ffc21f", "#f39200"],
+    shadeFrom: 4,
+    grid: [
+      "....X....",
+      "...XXX...",
+      "...XXX...",
+      "XXXXXXXXX",
+      ".XXXXXXX.",
+      "..XXXXX..",
+      "..XXXXX..",
+      ".XX...XX.",
+      ".X.....X.",
+    ],
+  },
+};
+
+function pixelSvg(name) {
+  const { grid, tones, shadeFrom } = PIXEL_ART[name];
+  const width = grid[0].length;
+  const height = grid.length;
+
+  let squares = "";
+  grid.forEach((row, y) => {
+    [...row].forEach((cell, x) => {
+      if (cell !== "X") return;
+      // Slightly oversized squares: exactly 1 unit leaves hairline seams
+      // between neighbours once the SVG is scaled up.
+      squares += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${y >= shadeFrom ? tones[1] : tones[0]}"/>`;
+    });
+  });
+
+  return `<svg viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">${squares}</svg>`;
+}
+
+/**
+ * Hearts and stars strictly take turns, and the rota carries on across
+ * emissions - so pressing the companion repeatedly alternates heart, star,
+ * heart, rather than picking at random and repeating itself.
+ */
+const PARTICLE_ROTA = ["heart", "star"];
+let particleTurn = 0;
+
+const nextParticleKind = () => PARTICLE_ROTA[particleTurn++ % PARTICLE_ROTA.length];
+
+/** Throws a small burst above the companion. Each particle drifts and spins
+ *  differently, so a burst never looks like one shape stamped three times. */
+function emitParticles(count) {
+  Array.from({ length: count }, nextParticleKind).forEach((kind, index) => {
+    const particle = document.createElement("span");
+    particle.className = "pet-particle";
+    particle.setAttribute("aria-hidden", "true");
+    particle.innerHTML = pixelSvg(kind);
+
+    // Drift is a fraction of --pet-h so the spread scales with the companion.
+    particle.style.setProperty("--drift", ((Math.random() * 2 - 1) * 0.22).toFixed(3));
+    particle.style.setProperty("--spin", `${Math.round(Math.random() * 60 - 30)}deg`);
+    particle.style.animationDelay = `${index * 90}ms`;
+
+    petButton.append(particle);
+    setTimeout(() => particle.remove(), 900 + index * 90 + 80);
+  });
 }
 
 /**

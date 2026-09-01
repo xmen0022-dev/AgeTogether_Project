@@ -999,7 +999,6 @@ function handleAction(action) {
 
 // Floating companion shortcut: opens the AI Companion page. This is navigation
 // only; the current AI page is static and does not call an external AI/backend.
-pet.addEventListener("click", () => setRoute("ai"));
 
 // Initial render after data.js has populated window.appData.
 render();
