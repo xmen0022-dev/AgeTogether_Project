@@ -1492,6 +1492,95 @@ textarea {
   cursor: pointer;
 }
 
+.pet-status {
+  margin-bottom: 24px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: var(--peach-soft);
+}
+
+.pet-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pet-status-head h2 {
+  margin: 0;
+}
+
+.outline-btn.small {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.pet-bond {
+  margin-top: 14px;
+}
+
+.pet-bond-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pet-bond-track {
+  height: 12px;
+  margin: 6px 0 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: white;
+  box-shadow: inset 0 1px 2px rgb(60 40 30 / 12%);
+}
+
+.pet-bond-track span {
+  height: 100%;
+  display: block;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.5s ease-out;
+}
+
+.pet-snacks {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Big, obvious targets - these are the main thing to press on this card. */
+.pet-snack {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  background: white;
+  cursor: pointer;
+}
+
+.pet-snack:hover {
+  border-color: var(--green);
+}
+
+.pet-snack svg {
+  width: 100%;
+  height: auto;
+}
+
+/* Dozing: breathing slows right down and the sway stops. */
+.pet.is-asleep {
+  animation: pet-breathe 7.5s ease-in-out infinite;
+  filter: saturate(0.85) brightness(0.96);
+}
+
 .pet-history-title {
   margin-top: 24px;
 }

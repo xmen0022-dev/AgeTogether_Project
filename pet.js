@@ -24,6 +24,29 @@ const MAX_COMPANIONS = 12;
 /** Stored larger than it is displayed so it stays sharp, but not 768px larger. */
 const STORED_DIMENSION = 512;
 
+/** Name, bond and start date live apart from the photo library: they are tiny,
+ *  and must never be at risk from the library's quota eviction. */
+const PET_KEY = "agetogether.companion.pet.v1";
+
+/**
+ * Bond only ever goes up.
+ *
+ * A pet that decays while you are away punishes absence, and for someone
+ * living alone that reads as "I could not even look after this". Coming back
+ * after a fortnight finds exactly what you left, never something worse.
+ */
+const BOND_REWARDS = { greet: 1, feed: 2, done: 1, note: 3, activity: 5 };
+
+/** Thresholds, not a formula: early levels come quickly, later ones take time. */
+const BOND_LEVELS = [0, 8, 20, 40, 70, 115, 180, 280, 420];
+
+/** Stops a held button or a fast typist from farming bond. */
+const BOND_COOLDOWNS = { greet: 4000, feed: 45000 };
+
+/** Local hours the companion dozes. Also keeps it quiet at night. */
+const SLEEP_FROM_HOUR = 22;
+const SLEEP_UNTIL_HOUR = 6;
+
 /** Phone photos are far larger than the companion needs on screen. */
 const MAX_DIMENSION = 768;
 
@@ -225,6 +248,95 @@ function activeDataUrl(library) {
   return library.items.find((item) => item.id === library.activeId)?.dataUrl ?? null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Name, bond and daily rhythm                                          */
+/* ------------------------------------------------------------------ */
+
+function loadPet() {
+  const fallback = { name: null, bond: 0, firstSeen: Date.now(), lastFedAt: 0 };
+  try {
+    const stored = JSON.parse(localStorage.getItem(PET_KEY) ?? "null");
+    if (stored && typeof stored === "object") return { ...fallback, ...stored };
+    savePet(fallback); // first ever run - start counting the days from today
+  } catch {
+    // Blocked or corrupt storage: the companion still works, it just forgets.
+  }
+  return fallback;
+}
+
+function savePet(pet) {
+  try {
+    localStorage.setItem(PET_KEY, JSON.stringify(pet));
+  } catch {
+    // Nothing to do - a companion that cannot be saved is still a companion.
+  }
+}
+
+/** Day one is the day you met, not the day after. */
+function daysTogether(pet) {
+  return Math.floor((Date.now() - pet.firstSeen) / 86400000) + 1;
+}
+
+function bondProgress(bond) {
+  let level = 1;
+  while (level < BOND_LEVELS.length && bond >= BOND_LEVELS[level]) level += 1;
+  const floorValue = BOND_LEVELS[level - 1];
+  const ceilingValue = BOND_LEVELS[level] ?? floorValue;
+  const span = ceilingValue - floorValue;
+  return {
+    level,
+    max: BOND_LEVELS.length,
+    percent: span ? Math.round(((bond - floorValue) / span) * 100) : 100,
+  };
+}
+
+const lastAwardAt = {};
+
+/** Adds bond and never subtracts. Returns false when the cooldown swallowed it. */
+function addBond(source) {
+  const amount = BOND_REWARDS[source];
+  if (!amount) return false;
+
+  const cooldown = BOND_COOLDOWNS[source] ?? 0;
+  const now = Date.now();
+  if (cooldown && now - (lastAwardAt[source] ?? 0) < cooldown) return false;
+  lastAwardAt[source] = now;
+
+  const pet = loadPet();
+  pet.bond += amount;
+  if (source === "feed") pet.lastFedAt = now;
+  savePet(pet);
+  refreshStatusCard();
+  return true;
+}
+
+function isSleepingHour() {
+  const hour = new Date().getHours();
+  return hour >= SLEEP_FROM_HOUR || hour < SLEEP_UNTIL_HOUR;
+}
+
+let wakeUntil = 0;
+
+/** Asleep unless the user just prodded it - being poked wakes anyone briefly. */
+function isAsleep() {
+  return isSleepingHour() && Date.now() > wakeUntil;
+}
+
+function applySleepState() {
+  petButton?.classList.toggle("is-asleep", isAsleep());
+}
+
+/** A drowsy Z now and then, so the sleeping state reads as sleeping. */
+function scheduleSnore() {
+  setTimeout(() => {
+    if (!document.hidden && isAsleep() && !petButton?.classList.contains("hidden")) {
+      emitParticles(1, "zzz");
+    }
+    applySleepState();
+    scheduleSnore();
+  }, 7000 + Math.random() * 6000);
+}
+
 /**
  * Identifies a photo so the same one is never cut out twice - that is the slow
  * step, and on a first run it also pulls down the model.
@@ -327,6 +439,26 @@ const PIXEL_ART = {
       "...XX...",
     ],
   },
+  apple: {
+    tones: ["#e5442e", "#b8301f"],
+    shadeFrom: 3,
+    grid: [".XXXXX.", "XXXXXXX", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX.."],
+  },
+  biscuit: {
+    tones: ["#d9a05b", "#b87f3e"],
+    shadeFrom: 3,
+    grid: [".XXXXX.", "XXXXXXX", "XXXXXXX", "XXXXXXX", ".XXXXX."],
+  },
+  bone: {
+    tones: ["#f4e8d2", "#d8c3a0"],
+    shadeFrom: 2,
+    grid: ["XX...XX", "XXXXXXX", "XX...XX"],
+  },
+  zzz: {
+    tones: ["#9db8cc", "#7d99ad"],
+    shadeFrom: 3,
+    grid: ["XXXXX", "...X.", "..X..", ".X...", "XXXXX"],
+  },
   star: {
     tones: ["#ffc21f", "#f39200"],
     shadeFrom: 4,
@@ -374,8 +506,8 @@ const nextParticleKind = () => PARTICLE_ROTA[particleTurn++ % PARTICLE_ROTA.leng
 
 /** Throws a small burst above the companion. Each particle drifts and spins
  *  differently, so a burst never looks like one shape stamped three times. */
-function emitParticles(count) {
-  Array.from({ length: count }, nextParticleKind).forEach((kind, index) => {
+function emitParticles(count, forcedKind) {
+  Array.from({ length: count }, () => forcedKind ?? nextParticleKind()).forEach((kind, index) => {
     const particle = document.createElement("span");
     particle.className = "pet-particle";
     particle.setAttribute("aria-hidden", "true");
@@ -398,7 +530,7 @@ function emitParticles(count) {
 function scheduleIdleHop() {
   const delay = 12000 + Math.random() * 14000;
   setTimeout(() => {
-    if (!document.hidden) react("hop");
+    if (!document.hidden && !isAsleep()) react("hop");
     scheduleIdleHop();
   }, delay);
 }
@@ -425,12 +557,21 @@ function watchTheUser() {
       // The companion has its own, larger hop - do not also tap for it.
       if (event.target.closest?.("#pet")) return;
 
-      const meaningful = event.target.closest?.("[data-action], [data-toggle-family-note], [data-route]");
+      const meaningful = event.target.closest?.("[data-action], [data-toggle-family-note], [data-join-activity], [data-route]");
       const action = meaningful?.dataset.action;
 
-      if (action === "add-family-note" || action === "post-friend-note") react("happy");
-      else if (action === "mark-all-family-done" || meaningful?.hasAttribute("data-toggle-family-note")) react("perk");
-      else if (meaningful?.dataset.route === "family" || meaningful?.dataset.route === "friends") react("perk");
+      if (action === "add-family-note" || action === "post-friend-note") {
+        addBond("note");
+        react("happy");
+      } else if (action === "mark-all-family-done" || meaningful?.hasAttribute("data-toggle-family-note")) {
+        addBond("done");
+        react("perk");
+      } else if (meaningful?.hasAttribute("data-join-activity")) {
+        addBond("activity");
+        react("happy");
+      } else if (meaningful?.dataset.route === "family" || meaningful?.dataset.route === "friends") {
+        react("perk");
+      }
       // Anything else the user presses still gets acknowledged. Bongo Cat's
       // whole trick is that *every* input produces a response; a control that
       // does nothing is what makes a character feel switched off.
@@ -451,9 +592,16 @@ function startLife() {
   petButton.style.setProperty("--blink-period", `${(5 + Math.random() * 3).toFixed(2)}s`);
 
   // Hop on press, but let the existing click handler still open the AI page.
-  petButton.addEventListener("pointerdown", () => react("hop"));
+  petButton.addEventListener("pointerdown", () => {
+    wakeUntil = Date.now() + 6000; // prodded awake, then back to dozing
+    applySleepState();
+    addBond("greet");
+    react("hop");
+  });
   watchTheUser();
   scheduleIdleHop();
+  applySleepState();
+  scheduleSnore();
 }
 
 /* ------------------------------------------------------------------ */
@@ -467,6 +615,7 @@ function mountSetup() {
   const library = loadLibrary();
 
   host.innerHTML = `
+    ${statusCardMarkup()}
     <h2>Give your companion a face</h2>
     <p class="muted">Choose a photo of a pet or an animal you like. We will cut it out so it can
     sit on your screen and keep you company. Your photo stays on this device.</p>
@@ -492,6 +641,110 @@ function mountSetup() {
   });
 
   host.querySelector("#pet-history")?.addEventListener("click", onHistoryClick);
+  bindStatusCard(host);
+}
+
+/* ------------------------------------------------------------------ */
+/* Status card: name, days together, bond, snacks                       */
+/* ------------------------------------------------------------------ */
+
+const SNACKS = [
+  { kind: "apple", label: "an apple" },
+  { kind: "biscuit", label: "a biscuit" },
+  { kind: "bone", label: "a treat" },
+];
+
+function statusCardMarkup() {
+  const pet = loadPet();
+  const progress = bondProgress(pet.bond);
+  const days = daysTogether(pet);
+  const name = pet.name;
+
+  return `
+    <section class="pet-status" id="pet-status-card">
+      <div class="pet-status-head">
+        <h2>${name ? escapeHtml(name) : "Your companion"}</h2>
+        <button class="outline-btn small" id="pet-rename">${name ? "Change name" : "Give a name"}</button>
+      </div>
+      <p class="muted">${
+        days === 1
+          ? "Today is your first day together."
+          : `${name ? escapeHtml(name) : "Your companion"} has been with you for ${days} days.`
+      }</p>
+
+      <div class="pet-bond">
+        <div class="pet-bond-label"><span>Friendship</span><strong>Level ${progress.level} of ${progress.max}</strong></div>
+        <div class="pet-bond-track"><span style="width:${progress.percent}%"></span></div>
+        <p class="muted small">This only ever grows. It never falls, however long you are away.</p>
+      </div>
+
+      <div class="pet-snacks">
+        <span class="muted"><strong>Share a snack:</strong></span>
+        ${SNACKS.map(
+          (snack) => `<button class="pet-snack" data-snack="${snack.kind}" aria-label="Share ${snack.label}">${pixelSvg(snack.kind)}</button>`,
+        ).join("")}
+      </div>
+      <p class="muted small" id="pet-snack-note"></p>
+    </section>
+  `;
+}
+
+function refreshStatusCard() {
+  const card = document.querySelector("#pet-status-card");
+  if (!card) return; // not on the AI page - nothing to update
+  card.outerHTML = statusCardMarkup();
+  bindStatusCard(document.querySelector("#pet-setup"));
+}
+
+function bindStatusCard(host) {
+  host?.querySelector("#pet-rename")?.addEventListener("click", onRename);
+  host?.querySelector(".pet-snacks")?.addEventListener("click", onSnack);
+}
+
+function onRename() {
+  const pet = loadPet();
+  const answer = window.prompt("What would you like to call your companion?", pet.name ?? "");
+  if (answer === null) return;
+
+  pet.name = answer.trim().slice(0, 24) || null;
+  savePet(pet);
+  refreshStatusCard();
+  applyNameToLabel();
+  if (pet.name) react("happy");
+}
+
+function applyNameToLabel() {
+  const { name } = loadPet();
+  petButton?.setAttribute("aria-label", name ? `Pet ${name}` : "Pet your companion");
+}
+
+function onSnack(event) {
+  const button = event.target.closest("[data-snack]");
+  if (!button) return;
+
+  const name = loadPet().name ?? "Your companion";
+
+  // A refusal here is never a telling-off: it is the companion being content.
+  const accepted = addBond("feed");
+
+  if (accepted) {
+    wakeUntil = Date.now() + 6000;
+    applySleepState();
+    emitParticles(2, button.dataset.snack);
+    react("happy");
+  } else {
+    emitParticles(1, "heart");
+    react("perk");
+  }
+
+  // Query the note last: a successful feed rebuilds the card inside addBond,
+  // so anything looked up earlier now points at a detached element.
+  const note = document.querySelector("#pet-snack-note");
+  if (note) {
+    note.textContent = accepted
+      ? `${name} enjoyed that.`
+      : `${name} is still enjoying the last one. Try again in a little while.`;
+  }
 }
 
 /** Past cut-outs, newest first. Choosing one is instant: the slow work is done. */
@@ -619,6 +872,7 @@ async function onPhotoChosen(event) {
 /* ------------------------------------------------------------------ */
 
 applyPhoto(activeDataUrl(loadLibrary()));
+applyNameToLabel();
 startLife();
 
 // renderAI() calls this after it rebuilds the AI Companion page.
