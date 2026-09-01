@@ -1,10 +1,14 @@
 const app = document.querySelector("#app");
 const pet = document.querySelector("#pet");
-const nav = [...document.querySelectorAll(".bottom-nav button")];
+const nav = [...document.querySelectorAll(".top-nav button")];
 
+// Current visible page. This simple router lets the prototype work like a
+// multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
 
+// The floating companion button is only useful after the landing page, so this
+// list controls where it appears.
 const pagesWithPet = new Set(["family", "friends", "manage-family", "manage-friends", "social", "profile", "ai"]);
 
 /* ------------------------------------------------------------------ */
@@ -16,6 +20,10 @@ let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
 
 const COLORS = appData.colors || ["peach", "purple", "blue", "green"];
+// Make a runtime copy of the seed data from data.js.
+// This is important for the prototype: user actions can mutate `state` without
+// changing the original seed object. In a future backend version, this state
+// would be populated by API responses instead of the static data.js file.
 const state = JSON.parse(JSON.stringify(appData.state || {}));
 
 /* ------------------------------------------------------------------ */
@@ -23,18 +31,23 @@ const state = JSON.parse(JSON.stringify(appData.state || {}));
 /* ------------------------------------------------------------------ */
 
 function setRoute(nextRoute) {
+  // Change the active screen and re-render the app from the current state.
+  // In a full app this would usually be handled by a router library.
   route = nextRoute;
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
 
 function activeRoute() {
+  // Management pages still belong to their parent navigation items, so the
+  // bottom navigation highlights Family/Friends instead of adding extra tabs.
   if (route === "manage-family") return "family";
   if (route === "manage-friends") return "friends";
   return route;
 }
 
 function pageHead(title, subtitle) {
+  // Reusable header component for pages that use a top title area.
   return `
     <section class="page-head">
       <h1>${title}</h1>
@@ -44,14 +57,18 @@ function pageHead(title, subtitle) {
 }
 
 function getFamilyMember(id) {
+  // Lookup helper used by notes and management actions.
   return state.familyMembers.find((m) => m.id === id);
 }
 
 function getFriend(id) {
+  // Lookup helper used by the Friends board and friend management screen.
   return state.friends.find((f) => f.id === id);
 }
 
 function nextColor(existingCount) {
+  // Gives newly added people a rotating colour so generated cards still match
+  // the existing visual system.
   return COLORS[existingCount % COLORS.length];
 }
 
@@ -60,24 +77,42 @@ function nextColor(existingCount) {
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
+  // Landing page: explains the purpose of the service and gives simple entry
+  // points into the main tools.
   app.innerHTML = `
     <section class="home-wrap">
-      <div class="check-mark">&#x2713;</div>
-      <h1>AgeTogether Australia</h1>
-      <p>A simple way to stay connected with friends and family.</p>
-      <section class="menu-list">
-        ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "A private board for trusted care notes, reminders, and messages from your family.")}
-        ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A shared noticeboard with friends you already know - calm, low-pressure connection.")}
-        ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Find nearby community activities and helpful local news for healthy ageing.")}
-        ${homeCard("profile", "profile-card", "&#x1F464;", "Profile", "Manage your personal information and privacy settings.")}
-        ${homeCard("ai", "ai-card", "&#x1F43E;", "AI Companion", "A friendly helper for simple questions, daily suggestions, and safety tips.")}
+      <section class="home-hero">
+        <div class="hero-copy">
+          <span class="home-kicker">Support for healthy ageing</span>
+          <h1>AgeTogether Australia</h1>
+          <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
+          <div class="hero-actions">
+            <button class="get-started" data-route="family">Get Started</button>
+            <button class="outline-btn" data-route="social">Explore Activities</button>
+          </div>
+        </div>
+        <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
+          <img src="https://images.unsplash.com/photo-1764173040319-4db683637611?auto=format&fit=crop&w=1200&q=80" alt="Two older adults smiling together in a park" />
+        </div>
       </section>
-      <button class="get-started" data-route="family">Get Started</button>
+
+      <section class="home-section">
+        <div class="section-heading">
+          <span class="home-kicker">Main areas</span>
+          <h2>Choose where to go</h2>
+        </div>
+        <section class="menu-list">
+          ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members.")}
+          ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know.")}
+          ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information.")}
+        </section>
+      </section>
     </section>
   `;
 }
 
 function homeCard(routeName, className, icon, title, copy) {
+  // Small reusable card component for the Home menu.
   return `
     <button class="menu-card ${className}" data-route="${routeName}">
       <span class="menu-icon">${icon}</span>
@@ -95,6 +130,10 @@ function homeCard(routeName, className, icon, title, copy) {
 /* ------------------------------------------------------------------ */
 
 function renderFamily() {
+  // Family Board is data-driven:
+  // 1. Filter notes based on `state.familyFilterId`.
+  // 2. Convert every visible note object into a note card.
+  // 3. Rebuild the page from the latest state.
   const visibleNotes = state.familyNotes.filter((n) => !state.familyFilterId || n.memberId === state.familyFilterId);
 
   app.innerHTML = `
@@ -140,6 +179,8 @@ function renderFamily() {
 }
 
 function familyFilterChip(member) {
+  // Member filter chips are generated from `state.familyMembers`.
+  // The active chip is determined by the current filter state.
   const active = state.familyFilterId === member.id;
   return `
     <button class="pill ${active ? "active" : ""} ${member.color}-pill" data-family-filter="${member.id}">
@@ -149,6 +190,8 @@ function familyFilterChip(member) {
 }
 
 function familyNoteCard(n) {
+  // A note only stores `memberId`; this function joins note data with member
+  // data so the UI can show the member name, relationship, colour, and initial.
   const member = getFamilyMember(n.memberId);
   if (!member) return "";
   const relation = member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
@@ -165,6 +208,9 @@ function familyNoteCard(n) {
 }
 
 function renderManageFamily() {
+  // Management screen for trusted family members.
+  // The member list is rendered from `state.familyMembers`, so adding/removing
+  // members immediately changes the list after re-rendering.
   app.innerHTML = `
     ${pageHead("Manage Family Members", "Control who can post on your family board")}
     <section class="container narrow">
@@ -190,6 +236,8 @@ function renderManageFamily() {
 }
 
 function familyMemberRow(m) {
+  // One row in the family member management list.
+  // `muted` only changes the local prototype state at the moment.
   return `
     <article class="member ${m.muted ? "muted" : ""}">
       <span class="avatar ${m.color}">${m.initial}</span>
@@ -205,6 +253,10 @@ function familyMemberRow(m) {
 /* ------------------------------------------------------------------ */
 
 function renderFriends() {
+  // Friends Board is also data-driven:
+  // - `state.selectedFriendId` decides which board is open.
+  // - `state.friendNotes[friend.id]` provides that board's messages.
+  // - Posting a new message updates the selected friend's note array.
   const friend = getFriend(state.selectedFriendId);
   const notes = friend ? state.friendNotes[friend.id] || [] : [];
 
@@ -254,6 +306,8 @@ function renderFriends() {
 }
 
 function friendPick(friend) {
+  // Friend selector card. The note count is calculated from the current data,
+  // so it updates after new messages are posted.
   const active = friend.id === state.selectedFriendId;
   const noteCount = (state.friendNotes[friend.id] || []).length;
   return `
@@ -266,6 +320,8 @@ function friendPick(friend) {
 }
 
 function friendNoteCard(n, friend) {
+  // Friend notes have two possible authors: "you" or "friend".
+  // The displayed initial/name changes based on the author value.
   const isYou = n.author === "you";
   const initial = isYou ? "Y" : friend.initial;
   const name = isYou ? "You" : friend.name;
@@ -282,6 +338,8 @@ function friendNoteCard(n, friend) {
 }
 
 function renderManageFriends() {
+  // Management screen for trusted friends.
+  // This supports the prototype flow for inviting known contacts only.
   app.innerHTML = `
     ${pageHead("Manage Friends", "Control your trusted friend connections")}
     <section class="container narrow">
@@ -308,6 +366,8 @@ function renderManageFriends() {
 }
 
 function friendMemberRow(f) {
+  // One row in the friend management list.
+  // View, mute, and remove buttons are wired through data attributes.
   return `
     <article class="member ${f.muted ? "muted" : ""}">
       <span class="avatar ${f.color}">${f.initial}</span>
@@ -324,6 +384,9 @@ function friendMemberRow(f) {
 /* ------------------------------------------------------------------ */
 
 function renderSocial() {
+  // Social page switches between three data views:
+  // activities, news, and saved items. `socialTab` controls which renderer is
+  // used without changing the overall page shell.
   const content = {
     activities: renderActivities(),
     news: renderNews(),
@@ -347,6 +410,9 @@ function renderSocial() {
 const ACTIVITY_FILTERS = ["All", "Walking", "Gardening", "Coffee group", "Library event", "Health workshop", "Senior community"];
 
 function renderActivities() {
+  // Activity cards are generated from `state.activities`.
+  // The filter is a simple category match, which demonstrates a transparent
+  // data-driven discovery baseline suitable for Iteration 1.
   const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
@@ -365,6 +431,8 @@ function renderActivities() {
 }
 
 function activity(a) {
+  // Reusable card for one activity/place suggestion.
+  // The same component is used in both the Activities tab and Saved tab.
   return `
     <article class="activity-card">
       <div class="card-top">
@@ -382,6 +450,7 @@ function activity(a) {
 }
 
 function renderNews() {
+  // News cards are generated from `state.newsItems`.
   return `
     <h2>Useful news & information</h2>
     <p class="muted section-copy">Simple, helpful news for healthy and connected living.</p>
@@ -392,6 +461,7 @@ function renderNews() {
 }
 
 function news(n) {
+  // Reusable card for one news item. Saved state controls the button label.
   return `
     <article class="news-card">
       <div class="card-top">
@@ -407,6 +477,8 @@ function news(n) {
 }
 
 function renderSaved() {
+  // Saved view is derived from the data, not stored as a separate list.
+  // It collects activities/news where `saved === true`.
   const savedActivities = state.activities.filter((a) => a.saved);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
@@ -439,6 +511,8 @@ function renderSaved() {
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
+  // Profile page reads all fields from `state.profile`.
+  // Saving the form writes values back into state, then re-renders this page.
   const p = state.profile;
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
@@ -476,10 +550,12 @@ function renderProfile() {
 }
 
 function profileField(id, label, value) {
+  // Reusable input field. The id naming is used later when saving profile data.
   return `<div class="field"><label>${label}</label><input id="profile-${id}" value="${value}" /></div>`;
 }
 
 function toggle(t) {
+  // Privacy toggle row. Clicking the row flips the `on` value in state.
   return `
     <article class="toggle-row ${t.on ? "on" : ""}" data-toggle-key="${t.key}">
       <span class="switch"></span>
@@ -494,6 +570,8 @@ function toggle(t) {
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
+  // AI Companion is intentionally a visual prototype in this iteration.
+  // The UI shows the planned flow, but there is no real AI API integration yet.
   app.innerHTML = `
     ${pageHead("AI Companion", "Your friendly helper for questions, daily ideas, and safety tips")}
     <section class="container narrow">
@@ -530,6 +608,8 @@ function renderAI() {
 /* ------------------------------------------------------------------ */
 
 function render() {
+  // Central render function. Every route rebuilds the visible UI from the
+  // current data state. This is the main data-driven pattern in the prototype.
   nav.forEach((button) => button.classList.toggle("active", button.dataset.route === activeRoute()));
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
 
@@ -548,14 +628,21 @@ function render() {
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
-  // Navigation
+  // Event delegation keeps the interaction code in one place. Instead of
+  // attaching separate click listeners after every render, the document listens
+  // once and checks which data-* attribute was clicked.
+
+  // Navigation: any element with data-route changes the active screen. The
+  // render functions recreate the visible page from the current state object.
   const routeTarget = event.target.closest("[data-route]");
   if (routeTarget) {
     setRoute(routeTarget.dataset.route);
     return;
   }
 
-  // Social tab switching
+  // Social tab switching: this is local UI state only. In a real backend setup,
+  // this would usually remain on the frontend because it does not need to be
+  // saved to the database.
   const tabTarget = event.target.closest("[data-social-tab]");
   if (tabTarget) {
     socialTab = tabTarget.dataset.socialTab;
@@ -567,6 +654,8 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Family ---------------- */
 
+  // Filter the family board by one family member. This changes only the current
+  // view, so it is stored in frontend state instead of persistent data.
   const familyFilter = event.target.closest("[data-family-filter]");
   if (familyFilter) {
     const id = Number(familyFilter.dataset.familyFilter);
@@ -575,6 +664,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Choose who the next family reminder/note will be sent to. This selected id
+  // is later used by handleAction("add-family-note").
   const pickFamilyMember = event.target.closest("[data-pick-family-member]");
   if (pickFamilyMember) {
     state.familyNotePickId = Number(pickFamilyMember.dataset.pickFamilyMember);
@@ -582,6 +673,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mark one family note as done or not done. Backend mapping:
+  // PATCH /family-notes/:id with { done: true/false }.
+  // In this prototype the note is found in state.familyNotes and updated in
+  // memory, so the change resets when the page is refreshed.
   const toggleFamilyNote = event.target.closest("[data-toggle-family-note]");
   if (toggleFamilyNote) {
     const id = Number(toggleFamilyNote.dataset.toggleFamilyNote);
@@ -591,6 +686,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mute/unmute one family member. Backend mapping:
+  // PATCH /family-members/:id with { muted: true/false }.
   const muteFamily = event.target.closest("[data-mute-family]");
   if (muteFamily) {
     const id = Number(muteFamily.dataset.muteFamily);
@@ -600,6 +697,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Remove a family member and also remove notes that belonged to them.
+  // Backend mapping:
+  // DELETE /family-members/:id, then either cascade-delete their notes in the
+  // database or return updated family member/note lists from the API.
   const removeFamily = event.target.closest("[data-remove-family]");
   if (removeFamily) {
     const id = Number(removeFamily.dataset.removeFamily);
@@ -615,6 +716,8 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Friends ---------------- */
 
+  // Select which friend's shared board is open. This is view state, not
+  // database state, because it only controls what the current user is looking at.
   const selectFriend = event.target.closest("[data-select-friend]");
   if (selectFriend) {
     state.selectedFriendId = Number(selectFriend.dataset.selectFriend);
@@ -622,6 +725,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Like/unlike a friend's note. Backend mapping:
+  // POST /friend-notes/:id/like or DELETE /friend-notes/:id/like.
+  // A real backend would normally store who liked the note, not only a boolean.
   const toggleFriendLike = event.target.closest("[data-toggle-friend-like]");
   if (toggleFriendLike) {
     const id = Number(toggleFriendLike.dataset.toggleFriendLike);
@@ -636,6 +742,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mute/unmute friend messages. Backend mapping:
+  // PATCH /friends/:id with { muted: true/false }.
   const muteFriend = event.target.closest("[data-mute-friend]");
   if (muteFriend) {
     const id = Number(muteFriend.dataset.muteFriend);
@@ -645,6 +753,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Remove a friend and their board data from the current account.
+  // Backend mapping:
+  // DELETE /friends/:id. The server would decide whether messages are deleted
+  // globally or only hidden from this user.
   const removeFriend = event.target.closest("[data-remove-friend]");
   if (removeFriend) {
     const id = Number(removeFriend.dataset.removeFriend);
@@ -659,6 +771,9 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Social ---------------- */
 
+  // Activity category filter. This uses the activities loaded from data.js and
+  // filters them in the browser. If the dataset becomes large, this should move
+  // to an API query such as GET /activities?category=walking.
   const activityFilter = event.target.closest("[data-activity-filter]");
   if (activityFilter) {
     state.activityFilter = activityFilter.dataset.activityFilter;
@@ -666,6 +781,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Save/unsave a community activity. Backend mapping:
+  // POST /saved-items with { type: "activity", id } or
+  // DELETE /saved-items/activity/:id.
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
     const id = Number(saveActivity.dataset.saveActivity);
@@ -675,6 +793,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Save/unsave a news item. Backend mapping:
+  // POST /saved-items with { type: "news", id } or
+  // DELETE /saved-items/news/:id.
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -684,6 +805,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Join/unjoin an activity. Backend mapping:
+  // POST /activity-registrations with { activityId } or
+  // DELETE /activity-registrations/:activityId.
+  // This is one of the clearest "backend interaction" points because a real
+  // site would need to save the registration, possibly send organiser details,
+  // and respect the profile sharing toggles.
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
     const id = Number(joinActivity.dataset.joinActivity);
@@ -695,6 +822,9 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Profile ---------------- */
 
+  // Toggle profile privacy settings. Backend mapping:
+  // PATCH /profile/share-settings with { key, on }.
+  // These toggles decide what information may be shared when joining activities.
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -706,14 +836,35 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Generic actions ---------------- */
 
+  // Form-style actions are routed through handleAction because they often need
+  // to read input values, validate them, create/update data objects, and then
+  // re-render the affected page.
   const action = event.target.closest("[data-action]");
   if (action) {
     handleAction(action.dataset.action);
   }
 });
 
+// Handles actions that are closer to backend transactions: add a note, add a
+// family member, add a friend, post a message, or save profile changes.
+//
+// Current implementation:
+// - Reads values from form inputs in the DOM.
+// - Validates required fields in the browser.
+// - Updates the in-memory `state` object.
+// - Calls a render function so the UI shows the latest data.
+//
+// Future backend implementation:
+// - Replace each direct state mutation with fetch()/axios calls to the server.
+// - Let the backend create ids, validate data, and store records in the database.
+// - After the API responds, update `state` with the returned record/list and
+//   re-render the page. Add loading and error states around each request.
 function handleAction(action) {
   if (action === "add-family-note") {
+    // Create a new family reminder/note for the selected family member.
+    // Backend mapping:
+    // POST /family-notes with { memberId, text }
+    // Expected response: the created note with server id, date, and done status.
     const input = document.querySelector("#family-note-input");
     const text = input ? input.value.trim() : "";
     if (!text || !state.familyNotePickId) return;
@@ -729,18 +880,28 @@ function handleAction(action) {
   }
 
   if (action === "focus-family-note") {
+    // Convenience action only: opens the family page and places the cursor in the
+    // note input. No backend or database call is needed.
     renderFamily();
     document.querySelector("#family-note-input")?.focus();
     return;
   }
 
   if (action === "mark-all-family-done") {
+    // Marks every visible family note as done. Backend mapping:
+    // PATCH /family-notes/bulk with { done: true }.
+    // A production app should send only the ids the user is allowed to update.
     state.familyNotes.forEach((n) => (n.done = true));
     renderFamily();
     return;
   }
 
   if (action === "add-family-member") {
+    // Add a trusted family member. Backend mapping:
+    // POST /family-members with { name, relationship, contact }.
+    // The backend should validate the contact method and send the invite.
+    // The frontend should then show the returned member status, for example
+    // "pending" or "active".
     const name = document.querySelector("#fam-add-name")?.value.trim();
     const rel = document.querySelector("#fam-add-rel")?.value.trim();
     const contact = document.querySelector("#fam-add-contact")?.value.trim();
@@ -761,6 +922,11 @@ function handleAction(action) {
   }
 
   if (action === "post-friend-note") {
+    // Post a message to the selected friend's shared board.
+    // Backend mapping:
+    // POST /friends/:friendId/notes with { text }.
+    // In a real app this should also include authentication so the server knows
+    // the author is the current logged-in user.
     const input = document.querySelector("#friend-note-input");
     const text = input ? input.value.trim() : "";
     if (!text || !state.selectedFriendId) return;
@@ -777,6 +943,11 @@ function handleAction(action) {
   }
 
   if (action === "add-friend") {
+    // Add someone the user already knows through email, phone, or invite code.
+    // Backend mapping:
+    // POST /friends/invitations with { name, email, phone, code }.
+    // The server should check that the invite is valid and prevent adding
+    // strangers who are not connected through an allowed contact method.
     const name = document.querySelector("#friend-add-name")?.value.trim();
     const email = document.querySelector("#friend-add-email")?.value.trim();
     const phone = document.querySelector("#friend-add-phone")?.value.trim();
@@ -801,6 +972,11 @@ function handleAction(action) {
   }
 
   if (action === "save-profile") {
+    // Save personal information from the profile form.
+    // Backend mapping:
+    // PATCH /profile with the updated fields below.
+    // A real backend should validate sensitive fields such as age, phone number,
+    // email, emergency contact, and accessibility needs before saving.
     state.profile.fullName = document.querySelector("#profile-full-name")?.value ?? state.profile.fullName;
     state.profile.preferredName = document.querySelector("#profile-preferred-name")?.value ?? state.profile.preferredName;
     state.profile.age = document.querySelector("#profile-age")?.value ?? state.profile.age;
@@ -811,6 +987,9 @@ function handleAction(action) {
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
     state.profileJustSaved = true;
     renderProfile();
+    // Temporary success feedback for the prototype. With a backend this should
+    // appear after the API request succeeds, and an error message should be shown
+    // if the save request fails.
     setTimeout(() => {
       state.profileJustSaved = false;
       if (route === "profile") renderProfile();
@@ -818,5 +997,9 @@ function handleAction(action) {
   }
 }
 
+// Floating companion shortcut: opens the AI Companion page. This is navigation
+// only; the current AI page is static and does not call an external AI/backend.
 pet.addEventListener("click", () => setRoute("ai"));
+
+// Initial render after data.js has populated window.appData.
 render();
