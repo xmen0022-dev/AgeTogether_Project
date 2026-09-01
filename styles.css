@@ -1356,6 +1356,12 @@ textarea {
  * one element instead of overwriting each other's `transform`.
  */
 .pet {
+  /* --pet-h is the single size knob. Hop and tap distances are derived from it
+     because they are absolute lengths: breathing is `scale` and rescales for
+     free, but a fixed -20px hop is invisible on a companion four times taller. */
+  --pet-h: 42px;
+  --hop-lift: 20px;
+  --tap-sink: 3px;
   transform-origin: bottom center;
   animation:
     pet-breathe 4.2s ease-in-out infinite,
@@ -1389,7 +1395,7 @@ textarea {
 
 @keyframes pet-hop-lift {
   0%, 14% { translate: 0 0; }
-  48% { translate: 0 -20px; }
+  48% { translate: 0 calc(-1 * var(--hop-lift)); }
   78% { translate: 0 0; }
   100% { translate: 0 0; }
 }
@@ -1409,8 +1415,15 @@ textarea {
   /* No `bottom` here on purpose: inherit it from .pet so the photo companion
      and the drawn one always stand on the same line. Repeating the value is
      what let them drift apart when the navigation moved to the top. */
-  width: 88px;
-  height: 88px;
+  /* Height drives the size and width follows the subject, so a wide animal and
+     a tall one both stand the same height. A fixed square box would letterbox
+     any non-square cut-out and make it read as smaller than the box. */
+  --pet-h: 340px;
+  --hop-lift: calc(var(--pet-h) * 0.13);
+  --tap-sink: calc(var(--pet-h) * 0.02);
+  width: auto;
+  height: var(--pet-h);
+  max-width: calc(var(--pet-h) * 1.35);
   background: none;
   border-radius: 0;
   box-shadow: none;
@@ -1423,7 +1436,7 @@ textarea {
 }
 
 .pet-photo {
-  width: 100%;
+  width: auto;
   height: 100%;
   display: block;
   object-fit: contain;
@@ -1514,7 +1527,7 @@ textarea {
 }
 
 @keyframes pet-tap {
-  0% { translate: 0 3px; scale: 1.07 0.93; }
+  0% { translate: 0 var(--tap-sink); scale: 1.07 0.93; }
   100% { translate: 0 0; scale: 1 1; }
 }
 
@@ -1527,8 +1540,8 @@ textarea {
 }
 
 @keyframes pet-perk {
-  0% { translate: 0 -5px; scale: 0.96 1.08; }
-  35% { translate: 0 -5px; scale: 0.96 1.08; }
+  0% { translate: 0 calc(-0.25 * var(--hop-lift)); scale: 0.96 1.08; }
+  35% { translate: 0 calc(-0.25 * var(--hop-lift)); scale: 0.96 1.08; }
   100% { translate: 0 0; scale: 1 1; }
 }
 
@@ -1558,6 +1571,12 @@ textarea {
   0% { opacity: 0; translate: 0 0; scale: 0.4; }
   25% { opacity: 1; scale: 1.1; }
   100% { opacity: 0; translate: 0 -34px; scale: 0.9; }
+}
+
+@media (max-width: 760px) {
+  .pet.has-photo {
+    --pet-h: 190px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

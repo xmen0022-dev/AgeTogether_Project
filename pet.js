@@ -30,6 +30,14 @@ const ALPHA_THRESHOLD = 12;
  */
 const CUTOUT_MODULE = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm";
 
+/**
+ * What counts as "the user pressed something". Deliberately does not include
+ * plain page background: on a touch screen a scroll also starts with a
+ * pointerdown, and reacting to those would make the companion twitch while
+ * the user is only reading.
+ */
+const INTERACTIVE = "button, a, input, textarea, select, label, summary, [role='button'], .pill, .tab";
+
 const petButton = document.querySelector("#pet");
 
 /* ------------------------------------------------------------------ */
@@ -278,13 +286,19 @@ function watchTheUser() {
   document.addEventListener(
     "pointerdown",
     (event) => {
-      const target = event.target.closest?.("[data-action], [data-toggle-family-note], [data-route]");
-      if (!target) return;
+      // The companion has its own, larger hop - do not also tap for it.
+      if (event.target.closest?.("#pet")) return;
 
-      const action = target.dataset.action;
+      const meaningful = event.target.closest?.("[data-action], [data-toggle-family-note], [data-route]");
+      const action = meaningful?.dataset.action;
+
       if (action === "add-family-note" || action === "post-friend-note") react("happy");
-      else if (action === "mark-all-family-done" || target.hasAttribute("data-toggle-family-note")) react("perk");
-      else if (target.dataset.route === "family" || target.dataset.route === "friends") react("perk");
+      else if (action === "mark-all-family-done" || meaningful?.hasAttribute("data-toggle-family-note")) react("perk");
+      else if (meaningful?.dataset.route === "family" || meaningful?.dataset.route === "friends") react("perk");
+      // Anything else the user presses still gets acknowledged. Bongo Cat's
+      // whole trick is that *every* input produces a response; a control that
+      // does nothing is what makes a character feel switched off.
+      else if (event.target.closest?.(INTERACTIVE)) react("tap");
     },
     true,
   );
