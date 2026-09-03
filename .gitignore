@@ -1,2 +1,11 @@
+# Secrets - never commit the API key
+.env
+
+# Dependencies
+node_modules/
+
+# Saved app state written by server.js
+server-state.json
+
 server.*.log
 preview-*.png

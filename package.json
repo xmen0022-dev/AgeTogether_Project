@@ -1,0 +1,14 @@
+{
+  "name": "agetogether-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgeTogether Australia - static prototype plus a small app server for the AI companion and saved state.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "pg": "^8.23.0"
+  }
+}
