@@ -448,7 +448,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`AgeTogether running at http://127.0.0.1:${PORT}/`);
   console.log(`  AI companion: ${hasApiKey ? "ready" : "OFF - no ANTHROPIC_API_KEY in .env"}`);
   console.log(`  Database: ${hasDatabase ? "ready" : "OFF - no DATABASE_URL in .env"}`);
