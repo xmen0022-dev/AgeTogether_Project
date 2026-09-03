@@ -217,6 +217,7 @@ const MIME_TYPES = {
 async function serveStatic(req, res, pathname) {
   const relative = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
   const filePath = path.join(ROOT, relative);
+  const fallbackPath = path.join(ROOT, "index.html");
 
   // Reject anything that escapes the project directory.
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== path.join(ROOT, "index.html")) {
@@ -239,8 +240,19 @@ async function serveStatic(req, res, pathname) {
     });
     res.end(file);
   } catch {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found");
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+      return;
+    }
+
+    const file = await readFile(fallbackPath);
+    res.writeHead(200, {
+      "Content-Type": MIME_TYPES[".html"],
+      "Content-Length": file.length,
+    });
+    res.end(file);
   }
 }
 
