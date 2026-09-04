@@ -13,6 +13,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 8000;
@@ -42,6 +43,13 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 const hasApiKey = Boolean(DEEPSEEK_API_KEY);
+const { Pool } = pg;
+const hasDatabase = Boolean(process.env.DATABASE_URL);
+const db = hasDatabase
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+    })
+  : null;
 
 /* ------------------------------------------------------------------ */
 /* Claude tasks                                                         */
@@ -286,6 +294,7 @@ const MIME_TYPES = {
 async function serveStatic(req, res, pathname) {
   const relative = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
   const filePath = path.join(ROOT, relative);
+  const fallbackPath = path.join(ROOT, "index.html");
 
   // Reject anything that escapes the project directory.
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== path.join(ROOT, "index.html")) {
@@ -308,8 +317,19 @@ async function serveStatic(req, res, pathname) {
     });
     res.end(file);
   } catch {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found");
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+      return;
+    }
+
+    const file = await readFile(fallbackPath);
+    res.writeHead(200, {
+      "Content-Type": MIME_TYPES[".html"],
+      "Content-Length": file.length,
+    });
+    res.end(file);
   }
 }
 
@@ -401,16 +421,114 @@ async function handleState(req, res) {
   sendJson(res, 405, { error: "Use GET, PUT or POST." });
 }
 
+async function handleDiscoveryPlaces(req, res, searchParams) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Use GET." });
+    return;
+  }
+
+  if (!db) {
+    sendJson(res, 503, {
+      error: "No DATABASE_URL set. Add PostgreSQL connection details to .env and restart the server.",
+    });
+    return;
+  }
+
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 100);
+
+  try {
+    const result = await db.query(
+      `
+        SELECT
+          place_id,
+          feature_name,
+          theme,
+          sub_theme,
+          latitude,
+          longitude,
+          relevance_reason,
+          provider,
+          licence,
+          official_url
+        FROM discovery_places
+        ORDER BY feature_name
+        LIMIT $1
+      `,
+      [limit],
+    );
+    sendJson(res, 200, { places: result.rows });
+  } catch (error) {
+    console.error("[database:discovery-places]", error?.message ?? error);
+    sendJson(res, 500, { error: "Could not load discovery places." });
+  }
+}
+
+async function handleNearbyPlaces(req, res, searchParams) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Use GET." });
+    return;
+  }
+
+  if (!db) {
+    sendJson(res, 503, {
+      error: "No DATABASE_URL set. Add PostgreSQL connection details to .env and restart the server.",
+    });
+    return;
+  }
+
+  const lat = Number(searchParams.get("lat"));
+  const lng = Number(searchParams.get("lng"));
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 100);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    sendJson(res, 400, { error: "Expected numeric lat and lng query parameters." });
+    return;
+  }
+
+  try {
+    const result = await db.query(
+      `
+        WITH user_location AS (
+          SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::GEOGRAPHY AS geom
+        )
+        SELECT
+          p.place_id,
+          p.feature_name,
+          p.theme,
+          p.sub_theme,
+          p.latitude,
+          p.longitude,
+          p.relevance_reason,
+          p.provider,
+          p.licence,
+          p.official_url,
+          ROUND((ST_Distance(p.geom, u.geom) / 1000)::NUMERIC, 2) AS distance_km
+        FROM discovery_places AS p
+        CROSS JOIN user_location AS u
+        ORDER BY ST_Distance(p.geom, u.geom)
+        LIMIT $3
+      `,
+      [lng, lat, limit],
+    );
+    sendJson(res, 200, { places: result.rows });
+  } catch (error) {
+    console.error("[database:nearby-places]", error?.message ?? error);
+    sendJson(res, 500, { error: "Could not load nearby places." });
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Server                                                               */
 /* ------------------------------------------------------------------ */
 
 const server = createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
+  const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
 
   try {
     if (pathname === "/api/ask" && req.method === "POST") return await handleAsk(req, res);
     if (pathname === "/api/state") return await handleState(req, res);
+    if (pathname === "/api/discovery-places") return await handleDiscoveryPlaces(req, res, searchParams);
+    if (pathname === "/api/nearby-places") return await handleNearbyPlaces(req, res, searchParams);
     if (pathname.startsWith("/api/")) return sendJson(res, 404, { error: "Unknown endpoint." });
     return await serveStatic(req, res, pathname);
   } catch (error) {
@@ -422,8 +540,9 @@ const server = createServer(async (req, res) => {
 // Only listen when this file is the application entry point. Tests can import
 // the pure prompt helpers without opening a real network port.
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
-  server.listen(PORT, "127.0.0.1", () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`AgeTogether running at http://127.0.0.1:${PORT}/`);
     console.log(`  AI companion: ${hasApiKey ? "ready" : "OFF - no DEEPSEEK_API_KEY in .env"}`);
+    console.log(`  Database: ${hasDatabase ? "ready" : "OFF - no DATABASE_URL in .env"}`);
   });
 }

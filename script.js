@@ -27,6 +27,10 @@ const COLORS = appData.colors || ["peach", "purple", "blue", "green"];
 // changing the original seed object. In a future backend version, this state
 // would be populated by API responses instead of the static data.js file.
 const state = JSON.parse(JSON.stringify(appData.state || {}));
+const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
+let activitiesSource = "static";
+let activitiesLoading = false;
+let activitiesError = "";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -72,6 +76,62 @@ function nextColor(existingCount) {
   // Gives newly added people a rotating colour so generated cards still match
   // the existing visual system.
   return COLORS[existingCount % COLORS.length];
+}
+
+function activityIcon(category) {
+  const value = `${category || ""}`.toLowerCase();
+  if (value.includes("library")) return "&#x1F4DA;";
+  if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
+  if (value.includes("health") || value.includes("medical")) return "&#x1FA7A;";
+  if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
+  if (value.includes("community")) return "&#x1F91D;";
+  return "&#x1F4CD;";
+}
+
+function mapDiscoveryPlace(place) {
+  const category = place.sub_theme || place.theme || "Community place";
+  const distance = place.distance_km ? ` &middot; ${place.distance_km} km away` : "";
+  return {
+    id: `place-${place.place_id}`,
+    category,
+    icon: activityIcon(category),
+    title: place.feature_name,
+    location: `${place.theme}${distance}`,
+    date: "Community place",
+    price: "Details not confirmed",
+    copy: place.relevance_reason || "A nearby place from the City of Melbourne discovery dataset.",
+    access: "Check directly with the venue before visiting",
+    organiser: `${place.provider} dataset`,
+    saved: false,
+    joined: false,
+    source: "database",
+    licence: place.licence,
+    officialUrl: place.official_url,
+  };
+}
+
+async function loadDatabaseActivities() {
+  activitiesLoading = true;
+  activitiesError = "";
+  if (route === "social") renderSocial();
+
+  try {
+    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=24");
+    if (!response.ok) throw new Error(`Database API returned ${response.status}`);
+    const payload = await response.json();
+    const places = Array.isArray(payload.places) ? payload.places : [];
+    if (!places.length) throw new Error("Database API returned no places");
+    state.activities = places.map(mapDiscoveryPlace);
+    activitiesSource = "database";
+  } catch (error) {
+    console.warn("[activities] using static fallback:", error?.message ?? error);
+    state.activities = staticActivities;
+    activitiesSource = "static";
+    activitiesError = "Database places are unavailable, so static sample activities are shown.";
+  } finally {
+    activitiesLoading = false;
+    if (route === "social") renderSocial();
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -409,7 +469,9 @@ function renderSocial() {
   `;
 }
 
-const ACTIVITY_FILTERS = ["All", "Walking", "Gardening", "Coffee group", "Library event", "Health workshop", "Senior community"];
+function activityFilters() {
+  return ["All", ...new Set(state.activities.map((a) => a.category).filter(Boolean))];
+}
 
 function renderActivities() {
   // Activity cards are generated from `state.activities`.
@@ -418,9 +480,17 @@ function renderActivities() {
   const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
-    <p class="muted section-copy">Safe, welcoming local events designed for older adults.</p>
+    <p class="muted section-copy">
+      ${
+        activitiesSource === "database"
+          ? "Showing nearby discovery places from the PostgreSQL/PostGIS database. Times and bookings should be checked with the venue."
+          : "Safe, welcoming sample events designed for older adults."
+      }
+    </p>
+    ${activitiesLoading ? `<p class="info-note">Loading places from the database...</p>` : ""}
+    ${activitiesError ? `<p class="info-note warning-note">${activitiesError}</p>` : ""}
     <div class="chips filter-row">
-      ${ACTIVITY_FILTERS.map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
+      ${activityFilters().map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
     </div>
     <section class="social-grid">
       ${
@@ -446,7 +516,15 @@ function activity(a) {
       <p><span class="small-badge blue-badge">&#x1F5D3; ${a.date}</span> <span class="small-badge">${a.price}</span></p>
       <p>${a.copy}</p>
       <p class="muted small">&#x267F; ${a.access}<br />&#x1F3E2; ${a.organiser}</p>
-      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${a.joined ? "&#x2713; Joined - tap to leave" : "Join Activity"}</button>
+      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${
+        a.source === "database"
+          ? a.joined
+            ? "&#x2713; Interested - tap to remove"
+            : "Mark as Interested"
+          : a.joined
+            ? "&#x2713; Joined - tap to leave"
+            : "Join Activity"
+      }</button>
     </article>
   `;
 }
@@ -871,8 +949,8 @@ document.addEventListener("click", (event) => {
   // DELETE /saved-items/activity/:id.
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
-    const id = Number(saveActivity.dataset.saveActivity);
-    const activityItem = state.activities.find((a) => a.id === id);
+    const id = saveActivity.dataset.saveActivity;
+    const activityItem = state.activities.find((a) => String(a.id) === id);
     if (activityItem) activityItem.saved = !activityItem.saved;
     renderSocial();
     return;
@@ -898,8 +976,8 @@ document.addEventListener("click", (event) => {
   // and respect the profile sharing toggles.
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
-    const id = Number(joinActivity.dataset.joinActivity);
-    const activityItem = state.activities.find((a) => a.id === id);
+    const id = joinActivity.dataset.joinActivity;
+    const activityItem = state.activities.find((a) => String(a.id) === id);
     if (activityItem) activityItem.joined = !activityItem.joined;
     renderSocial();
     return;
@@ -1095,3 +1173,4 @@ function handleAction(action) {
 
 // Initial render after data.js has populated window.appData.
 render();
+loadDatabaseActivities();

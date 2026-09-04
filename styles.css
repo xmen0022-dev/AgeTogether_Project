@@ -924,6 +924,22 @@ textarea {
   margin-bottom: 24px;
 }
 
+.info-note {
+  margin: -10px 0 18px;
+  border: 1px solid #b9d4c3;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #245f3a;
+  background: var(--green-soft);
+  font-size: 14px;
+}
+
+.warning-note {
+  border-color: #d9b52e;
+  color: #725a08;
+  background: var(--yellow-soft);
+}
+
 .filter-row {
   margin-bottom: 28px;
 }
