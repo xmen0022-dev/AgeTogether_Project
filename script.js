@@ -8,6 +8,9 @@ let route = "home";
 let socialTab = "activities";
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
+// pet.js reads this shared object when it creates localised speech or tips.
+// pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
+window.aiPreferences = aiPreferences;
 
 // The floating companion button is only useful after the landing page, so this
 // list controls where it appears.
@@ -651,8 +654,26 @@ function toggle(t) {
 
 function renderAI() {
   // Rebuild the AI page whenever it is opened, then let pet.js mount the setup panel.
-  // AI Companion is intentionally a visual prototype in this iteration.
-  // The UI shows the planned flow, but there is no real AI API integration yet.
+  // Reminder values come from the Pet module so the page reflects saved settings.
+  const reminders = window.AgePet?.getReminderSettings?.() ?? {
+    water: { enabled: true, time: "10:00" },
+    medication: { enabled: true, time: "12:00" },
+    movement: { enabled: true, time: "16:00" },
+  };
+
+  const reminderRow = (kind, label, copy) => `
+    <div class="reminder-row">
+      <label class="reminder-toggle">
+        <input type="checkbox" data-ai-reminder="${kind}" data-ai-reminder-field="enabled" ${reminders[kind].enabled ? "checked" : ""} />
+        <span><strong>${label}</strong><small class="muted">${copy}</small></span>
+      </label>
+      <label class="reminder-time">
+        <span class="sr-only">${label} time</span>
+        <input type="time" value="${reminders[kind].time}" data-ai-reminder="${kind}" data-ai-reminder-field="time" />
+      </label>
+    </div>
+  `;
+
   app.innerHTML = `
     ${pageHead("AI Companion", "Your friendly helper for questions, daily ideas, and safety tips")}
     <section class="container narrow">
@@ -680,6 +701,15 @@ function renderAI() {
                 <option value="expressive" ${aiPreferences.style === "expressive" ? "selected" : ""}>Warm and expressive</option>
               </select>
             </div>
+          </div>
+        </section>
+        <section class="ai-reminders panel">
+          <h2>Gentle daily reminders</h2>
+          <p class="muted small">These reminders run while this page is open. You can change the times anytime.</p>
+          <div class="reminder-list">
+            ${reminderRow("water", "Water", "Have a little drink.")}
+            ${reminderRow("medication", "Medicine", "Follow your usual plan.")}
+            ${reminderRow("movement", "Movement", "Try gentle movement if safe.")}
           </div>
         </section>
         <p class="muted quick-label"><strong>Quick questions - tap one to ask:</strong></p>
@@ -734,6 +764,9 @@ async function askCompanion(task, input) {
 
     answer.className = "ai-answer";
     answer.textContent = payload.text || "Your companion did not have an answer for that one.";
+    // Keep the full answer in the panel, but show a short, safe version above Pet.
+    // 完整答案留在面板中，同时把简短纯文本回复显示在 Pet 头顶。
+    window.AgePet?.speak(payload.text, { kind: "ai" });
   } catch (error) {
     if (requestNumber !== aiRequestNumber) return;
     answer.className = "ai-answer error";
@@ -1012,8 +1045,21 @@ document.addEventListener("click", (event) => {
 // 偏好属于当前页面状态，会随下一次 API 请求一起发送。
 document.addEventListener("change", (event) => {
   const preference = event.target.closest("[data-ai-preference]");
-  if (!preference) return;
-  aiPreferences[preference.dataset.aiPreference] = preference.value;
+  if (preference) {
+    aiPreferences[preference.dataset.aiPreference] = preference.value;
+    return;
+  }
+
+  // Save one reminder field without rebuilding the page or losing focus.
+  // 修改提醒时只更新对应字段，不重建页面，避免输入框失去焦点。
+  const reminderInput = event.target.closest("[data-ai-reminder]");
+  if (!reminderInput) return;
+  const settings = window.AgePet?.getReminderSettings?.();
+  if (!settings) return;
+  const kind = reminderInput.dataset.aiReminder;
+  const field = reminderInput.dataset.aiReminderField;
+  settings[kind][field] = field === "enabled" ? reminderInput.checked : reminderInput.value;
+  window.AgePet?.setReminderSettings(settings);
 });
 
 // Handles actions that are closer to backend transactions: add a note, add a

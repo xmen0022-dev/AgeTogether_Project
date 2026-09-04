@@ -77,8 +77,89 @@ const CUTOUT_MODULE = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.
  */
 const INTERACTIVE = "button, a, input, textarea, select, label, summary, [role='button'], .pill, .tab";
 
+// Pet reminders stay local to this browser; nothing here is sent to the server.
+const REMINDER_KEY = "agetogether.companion.reminders.v1";
+const REMINDER_DELIVERY_KEY = "agetogether.companion.reminder-delivery.v1";
+const DEFAULT_REMINDERS = {
+  water: { enabled: true, time: "10:00" },
+  medication: { enabled: true, time: "12:00" },
+  movement: { enabled: true, time: "16:00" },
+};
+
+// Built-in tips are intentionally short, gentle, and general rather than medical advice.
+const HEALTH_TIPS = {
+  "en-AU": {
+    mental: ["A quiet breath can settle a busy mind.", "A kind chat can brighten your day."],
+    physical: ["Sip some water and stretch gently.", "A short walk can help your body."],
+  },
+  "zh-CN": {
+    mental: ["慢慢呼吸，让心情平静。", "和亲友聊聊天，心情会更好。"],
+    physical: ["喝点水，轻轻伸展身体。", "安全地走一小会儿，有益身体。"],
+  },
+  "zh-TW": {
+    mental: ["慢慢呼吸，讓心情平靜。", "和親友聊聊天，心情會更好。"],
+    physical: ["喝點水，輕輕伸展身體。", "安全地走一小會兒，有益身體。"],
+  },
+};
+
+const SUPPORTED_PET_LANGUAGES = new Set(Object.keys(HEALTH_TIPS));
+
+// Keep model replies short enough for a speech bubble above the companion.
+function limitPetWords(text, maxWords = 10) {
+  return String(text ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, Math.max(0, maxWords))
+    .join(" ");
+}
+
+// Return a tip only on a tenth click, alternating mental and physical wellbeing.
+function nextHealthTip(clickCount, tipIndex = 0, language = "en-AU") {
+  if (!Number.isInteger(clickCount) || clickCount <= 0 || clickCount % 10 !== 0) return null;
+
+  const tips = HEALTH_TIPS[SUPPORTED_PET_LANGUAGES.has(language) ? language : "en-AU"];
+  const category = tipIndex % 2 === 0 ? "mental" : "physical";
+  const choices = tips[category];
+  return { category, text: choices[Math.floor(tipIndex / 2) % choices.length] };
+}
+
+function isValidReminderTime(time) {
+  if (typeof time !== "string" || !/^\d{2}:\d{2}$/.test(time)) return false;
+  const [hour, minute] = time.split(":").map(Number);
+  return hour >= 0 && hour < 24 && minute >= 0 && minute < 60;
+}
+
+// Merge saved settings with defaults so one corrupt field cannot break reminders.
+function normalizeReminderSettings(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(DEFAULT_REMINDERS).map(([kind, fallback]) => {
+      const saved = source[kind] && typeof source[kind] === "object" ? source[kind] : {};
+      return [kind, {
+        enabled: typeof saved.enabled === "boolean" ? saved.enabled : fallback.enabled,
+        time: isValidReminderTime(saved.time) ? saved.time : fallback.time,
+      }];
+    }),
+  );
+}
+
+// A reminder is due once at its configured minute and only once per local day.
+function isReminderDue(reminder, now = new Date(), deliveredDate = null) {
+  if (!reminder?.enabled || !isValidReminderTime(reminder.time) || deliveredDate === localDateKey(now)) return false;
+  const [hour, minute] = reminder.time.split(":").map(Number);
+  return now.getHours() === hour && now.getMinutes() === minute;
+}
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // The floating companion element; features safely skip if it is not present.
-const petButton = document.querySelector("#pet");
+const petButton = typeof document !== "undefined" ? document.querySelector("#pet") : null;
 
 /* ------------------------------------------------------------------ */
 /* Image pipeline                                                       */
@@ -273,7 +354,7 @@ function activeDataUrl(library) {
 
 function loadPet() {
   // Load name, bond, and dates; use safe defaults if storage is unavailable or corrupt.
-  const fallback = { name: null, bond: 0, firstSeen: Date.now(), lastFedAt: 0 };
+  const fallback = { name: null, bond: 0, firstSeen: Date.now(), lastFedAt: 0, clickCount: 0, healthTipIndex: 0 };
   try {
     const stored = JSON.parse(localStorage.getItem(PET_KEY) ?? "null");
     if (stored && typeof stored === "object") return { ...fallback, ...stored };
@@ -291,6 +372,148 @@ function savePet(pet) {
   } catch {
     // Nothing to do - a companion that cannot be saved is still a companion.
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Pet speech, health tips and reminders                               */
+/* ------------------------------------------------------------------ */
+
+let speechTimer = null;
+let reminderTimer = null;
+
+function petLanguage() {
+  // Follow the language selected on the AI Companion page when it is available.
+  const language = typeof window !== "undefined" ? window.aiPreferences?.language : null;
+  return SUPPORTED_PET_LANGUAGES.has(language) ? language : "en-AU";
+}
+
+function ensureSpeechBubble() {
+  // Create the bubble lazily so it never affects pages where the Pet is hidden.
+  if (typeof document === "undefined" || !petButton) return null;
+  let bubble = document.querySelector("#pet-speech");
+  if (!bubble) {
+    bubble = document.createElement("div");
+    bubble.id = "pet-speech";
+    bubble.className = "pet-speech";
+    bubble.setAttribute("role", "status");
+    bubble.setAttribute("aria-live", "polite");
+    document.body.append(bubble);
+  }
+  return bubble;
+}
+
+function speak(message, options = {}) {
+  // Show only safe, short text above the Pet; never interpret model output as HTML.
+  const text = limitPetWords(message, 10);
+  if (!text) return;
+  const bubble = ensureSpeechBubble();
+  if (!bubble) return;
+
+  clearTimeout(speechTimer);
+  const petRect = petButton.getBoundingClientRect();
+  bubble.style.right = `${Math.max(12, window.innerWidth - petRect.right)}px`;
+  bubble.style.bottom = `${Math.max(84, window.innerHeight - petRect.top + 12)}px`;
+  bubble.className = `pet-speech is-visible is-${options.kind ?? "ai"}`;
+  bubble.textContent = text;
+  speechTimer = setTimeout(() => bubble.classList.remove("is-visible"), options.durationMs ?? 7000);
+}
+
+function loadReminders() {
+  // Read and repair reminder settings so one malformed localStorage field is harmless.
+  try {
+    return normalizeReminderSettings(JSON.parse(localStorage.getItem(REMINDER_KEY) ?? "null"));
+  } catch {
+    return normalizeReminderSettings(null);
+  }
+}
+
+function saveReminders(settings) {
+  // Persist only the normalized shape; this keeps future UI edits predictable.
+  try {
+    localStorage.setItem(REMINDER_KEY, JSON.stringify(normalizeReminderSettings(settings)));
+  } catch {
+    // Private browsing or full storage should not disable the visible Pet.
+  }
+}
+
+function loadReminderDeliveries() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(REMINDER_DELIVERY_KEY) ?? "{}");
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReminderDeliveries(deliveries) {
+  try {
+    localStorage.setItem(REMINDER_DELIVERY_KEY, JSON.stringify(deliveries));
+  } catch {
+    // Delivery markers are a convenience; failure only permits a later repeat.
+  }
+}
+
+const REMINDER_COPY = {
+  "en-AU": {
+    water: "A little water break?",
+    medication: "Please follow your usual medicine plan.",
+    movement: "Gentle movement time, if it feels safe.",
+  },
+  "zh-CN": {
+    water: "该喝点水啦。",
+    medication: "请按平时的用药计划进行。",
+    movement: "如果安全，可以轻轻活动一下。",
+  },
+  "zh-TW": {
+    water: "該喝點水啦。",
+    medication: "請按平時的用藥計畫進行。",
+    movement: "如果安全，可以輕輕活動一下。",
+  },
+};
+
+function showNextHealthTip() {
+  // Every tenth click produces one alternating mental or physical tip.
+  const pet = loadPet();
+  const tip = nextHealthTip(pet.clickCount, pet.healthTipIndex, petLanguage());
+  if (!tip) return;
+  pet.healthTipIndex += 1;
+  savePet(pet);
+  speak(tip.text, { kind: "tip", durationMs: 9000 });
+}
+
+function recordPetClick() {
+  // Count all direct Pet presses, including when reduced motion is enabled.
+  const pet = loadPet();
+  pet.clickCount = Number.isInteger(pet.clickCount) && pet.clickCount >= 0 ? pet.clickCount + 1 : 1;
+  savePet(pet);
+  showNextHealthTip();
+}
+
+function checkReminders(now = new Date()) {
+  // Check due reminders at most once per local date and speak one if due.
+  const settings = loadReminders();
+  const deliveries = loadReminderDeliveries();
+  for (const kind of Object.keys(DEFAULT_REMINDERS)) {
+    if (!isReminderDue(settings[kind], now, deliveries[kind])) continue;
+    deliveries[kind] = localDateKey(now);
+    saveReminderDeliveries(deliveries);
+    speak(REMINDER_COPY[petLanguage()][kind], { kind: "reminder", durationMs: 9000 });
+    break;
+  }
+}
+
+function startReminderScheduler() {
+  // Restarting is safe when the single-page UI is rendered again.
+  clearInterval(reminderTimer);
+  checkReminders();
+  reminderTimer = setInterval(checkReminders, 60000);
+}
+
+function setReminderSettings(value) {
+  // Public bridge used by script.js when a user changes a reminder control.
+  const settings = normalizeReminderSettings(value);
+  saveReminders(settings);
+  startReminderScheduler();
 }
 
 /** Day one is the day you met, not the day after. */
@@ -620,6 +843,18 @@ function watchTheUser() {
 function startLife() {
   // Start blinking, idle hops, sleep-state updates, and user interaction listeners.
   if (!petButton) return;
+
+  // Hop on press, count the interaction, and let the existing click handler still open AI.
+  petButton.addEventListener("pointerdown", () => {
+    recordPetClick();
+    wakeUntil = Date.now() + 6000; // prodded awake, then back to dozing
+    applySleepState();
+    addBond("greet");
+    react("hop");
+  });
+
+  startReminderScheduler();
+
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     motionAllowed = false;
     return;
@@ -628,13 +863,6 @@ function startLife() {
   // Desynchronise the blink from the breathing so the two never line up.
   petButton.style.setProperty("--blink-period", `${(5 + Math.random() * 3).toFixed(2)}s`);
 
-  // Hop on press, but let the existing click handler still open the AI page.
-  petButton.addEventListener("pointerdown", () => {
-    wakeUntil = Date.now() + 6000; // prodded awake, then back to dozing
-    applySleepState();
-    addBond("greet");
-    react("hop");
-  });
   watchTheUser();
   scheduleIdleHop();
   applySleepState();
@@ -921,9 +1149,18 @@ async function onPhotoChosen(event) {
 /* Start                                                                */
 /* ------------------------------------------------------------------ */
 
-applyPhoto(activeDataUrl(loadLibrary()));
-applyNameToLabel();
-startLife();
+if (typeof document !== "undefined") {
+  applyPhoto(activeDataUrl(loadLibrary()));
+  applyNameToLabel();
+  startLife();
+}
 
 // renderAI() calls this after it rebuilds the AI Companion page.
-window.AgePet = { mountSetup };
+if (typeof window !== "undefined") {
+  window.AgePet = {
+    mountSetup,
+    speak,
+    getReminderSettings: loadReminders,
+    setReminderSettings,
+  };
+}
