@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSystemPrompt, normalizePreferences, runTask } from "../server.js";
+import { buildSystemPrompt, getDeepSeekApiKey, normalizePreferences, runTask } from "../server.js";
 
 test("normalizes missing preferences to Australian English and simple style", () => {
   assert.deepEqual(normalizePreferences(), { language: "en-AU", style: "simple" });
@@ -48,4 +48,9 @@ test("sends a DeepSeek chat-completions request and parses the answer", async ()
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("accepts the Render environment variable name used by the deployed service", () => {
+  assert.equal(getDeepSeekApiKey({ deepseekAgeV1: "render-key" }), "render-key");
+  assert.equal(getDeepSeekApiKey({ DEEPSEEK_API_KEY: "standard-key", deepseekAgeV1: "render-key" }), "standard-key");
 });

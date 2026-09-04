@@ -39,7 +39,14 @@ loadEnvFile();
 // DeepSeek is called through its OpenAI-compatible HTTP endpoint, so the
 // server does not need a provider-specific SDK in the browser or frontend.
 // 通过 DeepSeek 的兼容 HTTP 接口调用模型，API Key 永远不会进入浏览器。
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+// Render currently stores this service's key as `deepseekAgeV1`; the standard
+// name remains the preferred option for local development and future deploys.
+// Render 当前将该服务的 Key 命名为 `deepseekAgeV1`；标准名称优先用于本地和未来部署。
+function getDeepSeekApiKey(env = process.env) {
+  return env.DEEPSEEK_API_KEY || env.deepseekAgeV1 || "";
+}
+
+const DEEPSEEK_API_KEY = getDeepSeekApiKey();
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 const hasApiKey = Boolean(DEEPSEEK_API_KEY);
@@ -203,7 +210,7 @@ async function runTask(taskName, input, preferences = {}) {
   return { refused, text, suggestions };
 }
 
-export { buildSystemPrompt, normalizePreferences, runTask };
+export { buildSystemPrompt, getDeepSeekApiKey, normalizePreferences, runTask };
 
 /* ------------------------------------------------------------------ */
 /* Request helpers                                                      */
