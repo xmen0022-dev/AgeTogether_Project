@@ -18,7 +18,7 @@ so there is no CORS setup. It replaces the previous `python -m http.server` comm
 
 ### Setup
 
-Copy `.env.example` to `.env` and add an Anthropic API key. **Never commit `.env`** — it is
+Copy `.env.example` to `.env` and add a DeepSeek API key. **Never commit `.env`** — it is
 already listed in `.gitignore`. Without a key the site still runs; only the AI companion is off.
 
 ```powershell
@@ -27,9 +27,12 @@ Copy-Item .env.example .env
 
 ### `POST /api/ask`
 
-Proxies one request to the Claude API so the key stays on the server. The prompts live in
+Proxies one request to the DeepSeek API so the key stays on the server. The prompts live in
 `server.js`, not in the browser, so the endpoint accepts a named task rather than free-form
-instructions. Body: `{ "task": "<name>", "input": "<text>" }`.
+instructions. Body: `{ "task": "<name>", "input": "<text>", "language": "en-AU", "style": "simple" }`.
+
+Supported languages are `en-AU`, `zh-CN`, and `zh-TW`. Supported styles are `simple`,
+`standard`, and `expressive`. Safety rules always override language and style preferences.
 
 | Task | Purpose |
 |---|---|
@@ -50,7 +53,9 @@ Whole-blob JSON persistence to `server-state.json` (gitignored), so prototype ch
 page refresh. `GET` returns `null` when nothing has been saved yet, letting the frontend fall
 back to the seed data in `data.js`.
 
-> The frontend is not wired to either endpoint yet.
+The AI Companion page now uses `/api/ask` for quick questions, free-form questions,
+daily suggestions, and safety tips. The saved-state endpoint remains available for future
+frontend persistence work.
 
 ## Photo companion (`pet.js`)
 

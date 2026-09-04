@@ -6,6 +6,8 @@ const nav = [...document.querySelectorAll(".top-nav button")];
 // multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
+let aiPreferences = { language: "en-AU", style: "simple" };
+let aiRequestNumber = 0;
 
 // The floating companion button is only useful after the landing page, so this
 // list controls where it appears.
@@ -566,10 +568,11 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI (unchanged - out of scope)                                       */
+/* AI page and Companion integration                                  */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
+  // Rebuild the AI page whenever it is opened, then let pet.js mount the setup panel.
   // AI Companion is intentionally a visual prototype in this iteration.
   // The UI shows the planned flow, but there is no real AI API integration yet.
   app.innerHTML = `
@@ -580,27 +583,84 @@ function renderAI() {
           <span class="simple-pet"><span class="simple-face"></span></span>
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
+        <section class="ai-preferences panel">
+          <h2>How would you like me to speak?</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label for="ai-language">Language</label>
+              <select id="ai-language" data-ai-preference="language">
+                <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
+                <option value="zh-CN" ${aiPreferences.language === "zh-CN" ? "selected" : ""}>简体中文</option>
+                <option value="zh-TW" ${aiPreferences.language === "zh-TW" ? "selected" : ""}>繁體中文</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ai-style">Reading style</label>
+              <select id="ai-style" data-ai-preference="style">
+                <option value="simple" ${aiPreferences.style === "simple" ? "selected" : ""}>Simple and clear</option>
+                <option value="standard" ${aiPreferences.style === "standard" ? "selected" : ""}>Friendly and standard</option>
+                <option value="expressive" ${aiPreferences.style === "expressive" ? "selected" : ""}>Warm and expressive</option>
+              </select>
+            </div>
+          </div>
+        </section>
         <p class="muted quick-label"><strong>Quick questions - tap one to ask:</strong></p>
         <div class="quick-questions">
-          <button class="question">"How do I avoid scam messages?"</button>
-          <button class="question">"Remind me to call my family"</button>
-          <button class="question">"What can I do today?"</button>
+          <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
+          <button class="question" data-ai-question="How can I remember to call my family?">"Remind me to call my family"</button>
+          <button class="question" data-ai-question="What gentle activities could I do today?">"What can I do today?"</button>
         </div>
         <section class="panel">
           <h2>Ask your companion</h2>
-          <div class="ask-box"><input placeholder="Type your question here..." /><button class="primary">Ask AI</button></div>
+          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
+          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
         </section>
         <div class="wide-actions">
-          <button class="primary">&#x1F33F; Daily Suggestion</button>
-          <button class="blue-btn">&#x1F6E1; Safety Tip</button>
+          <button class="primary" data-ai-action="daily-suggestion">&#x1F33F; Daily Suggestion</button>
+          <button class="blue-btn" data-ai-action="safety-tip">&#x1F6E1; Safety Tip</button>
         </div>
+        <!--
+          Companion setup mount point.
+          pet.js fills this empty container with the photo picker, status card,
+          and companion history after the AI page has been rendered.
+        -->
         <section class="panel" id="pet-setup"></section>
         <p class="muted secure-copy">&#x1F512; Your conversations are private and secure.</p>
       </section>
     </section>
   `;
 
+  // Optional chaining keeps the AI page usable if the Companion module is unavailable.
   window.AgePet?.mountSetup();
+}
+
+// Send one named task to the server and render the response as plain text.
+// 将一个命名任务发送到服务端，并以纯文本安全显示返回结果。
+async function askCompanion(task, input) {
+  const answer = document.querySelector("#ai-answer");
+  if (!answer || !input.trim()) return;
+
+  const requestNumber = ++aiRequestNumber;
+  answer.className = "ai-answer loading";
+  answer.textContent = "Your companion is thinking...";
+
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task, input: input.trim(), ...aiPreferences }),
+    });
+    const payload = await response.json();
+    if (requestNumber !== aiRequestNumber) return;
+    if (!response.ok) throw new Error(payload.error || "The companion could not answer that.");
+
+    answer.className = "ai-answer";
+    answer.textContent = payload.text || "Your companion did not have an answer for that one.";
+  } catch (error) {
+    if (requestNumber !== aiRequestNumber) return;
+    answer.className = "ai-answer error";
+    answer.textContent = error.message || "The companion is unavailable right now.";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -649,6 +709,31 @@ document.addEventListener("click", (event) => {
     route = "social";
     window.scrollTo({ top: 0, behavior: "smooth" });
     renderSocial();
+    return;
+  }
+
+  /* ---------------- AI Companion --------------------------------- */
+
+  // Quick questions use the same server task as free-form questions.
+  // 快捷问题和自由输入共用同一个服务端 ask 任务。
+  const aiQuestion = event.target.closest("[data-ai-question]");
+  if (aiQuestion) {
+    askCompanion("ask", aiQuestion.dataset.aiQuestion);
+    return;
+  }
+
+  // Action buttons provide carefully worded prompts for common use cases.
+  // 操作按钮使用预先写好的提示，降低用户组织问题的负担。
+  const aiAction = event.target.closest("[data-ai-action]");
+  if (aiAction) {
+    const action = aiAction.dataset.aiAction;
+    if (action === "ask-ai") {
+      askCompanion("ask", document.querySelector("#ai-input")?.value || "");
+    } else if (action === "daily-suggestion") {
+      askCompanion("ask", "Suggest one gentle, low-cost activity I could consider today in Australia. Do not invent a specific event, time, price, or accessibility detail.");
+    } else if (action === "safety-tip") {
+      askCompanion("ask", "Give me one short general safety tip about suspicious messages and online scams. Do not tell me to click a link or call a number from a message.");
+    }
     return;
   }
 
@@ -843,6 +928,14 @@ document.addEventListener("click", (event) => {
   if (action) {
     handleAction(action.dataset.action);
   }
+});
+
+// Preferences are local UI state and are sent with the next API request.
+// 偏好属于当前页面状态，会随下一次 API 请求一起发送。
+document.addEventListener("change", (event) => {
+  const preference = event.target.closest("[data-ai-preference]");
+  if (!preference) return;
+  aiPreferences[preference.dataset.aiPreference] = preference.value;
 });
 
 // Handles actions that are closer to backend transactions: add a note, add a

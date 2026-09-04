@@ -2,10 +2,10 @@
  * AgeTogether - minimal app server.
  *
  * Serves the existing static prototype AND provides two small APIs:
- *   POST /api/ask    - proxies a task to the Claude API (the key never reaches the browser)
+ *   POST /api/ask    - proxies a task to the DeepSeek API (the key never reaches the browser)
  *   GET/PUT /api/state - whole-blob persistence so the prototype survives a refresh
  *
- * Start with:  npm start   (reads ANTHROPIC_API_KEY from .env)
+ * Start with:  npm start   (reads DEEPSEEK_API_KEY from .env)
  */
 
 import { createServer } from "node:http";
@@ -13,7 +13,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 8000;
@@ -36,14 +35,17 @@ function loadEnvFile() {
 
 loadEnvFile();
 
-const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
-const client = hasApiKey ? new Anthropic() : null;
+// DeepSeek is called through its OpenAI-compatible HTTP endpoint, so the
+// server does not need a provider-specific SDK in the browser or frontend.
+// 通过 DeepSeek 的兼容 HTTP 接口调用模型，API Key 永远不会进入浏览器。
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+const hasApiKey = Boolean(DEEPSEEK_API_KEY);
 
 /* ------------------------------------------------------------------ */
 /* Claude tasks                                                         */
 /* ------------------------------------------------------------------ */
-
-const MODEL = "claude-opus-5";
 
 /**
  * Shared rules for every task. These are deliberately strict: the app is used
@@ -112,48 +114,107 @@ const TASKS = {
   },
 };
 
-async function runTask(taskName, input) {
-  const task = TASKS[taskName];
+const LANGUAGES = {
+  "en-AU": "Reply in Australian English using Australian spelling.",
+  "zh-CN": "Reply in Simplified Chinese (简体中文). Do not mix in unnecessary English.",
+  "zh-TW": "Reply in Traditional Chinese (繁體中文). Do not mix Simplified Chinese characters into the answer.",
+};
 
-  const response = await client.beta.messages.create({
-    model: MODEL,
-    max_tokens: task.maxTokens,
-    system: `${BASE_SYSTEM}\n\n${task.system}`,
-    output_config: { effort: task.effort },
-    // Opt in to server-side fallbacks: a safety decline (likely on scam-check,
-    // where hostile text is fed in on purpose) is retried on another model
-    // instead of dead-ending in front of the user.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    messages: [{ role: "user", content: input }],
+const STYLES = {
+  simple:
+    "Use very short sentences, common everyday words, one idea at a time, and explain unfamiliar terms.",
+  standard:
+    "Use clear, warm, natural language with a little helpful detail. Keep the answer easy to scan.",
+  expressive:
+    "Use warm, gentle imagery or a light literary touch when it helps, but remain concrete, concise, and easy to understand.",
+};
+
+/**
+ * Validate presentation preferences without trusting arbitrary prompt text.
+ * 验证用户的语言和表达偏好，只允许预先定义的选项。
+ */
+function normalizePreferences(language, style) {
+  return {
+    language: Object.hasOwn(LANGUAGES, language) ? language : "en-AU",
+    style: Object.hasOwn(STYLES, style) ? style : "simple",
+  };
+}
+
+/**
+ * Combine shared safety rules, the task prompt, and bounded style instructions.
+ * 组合公共安全规则、具体任务规则以及受限制的语言/风格规则。
+ */
+function buildSystemPrompt(taskName, language, style) {
+  const task = TASKS[taskName];
+  if (!task) throw new Error(`Unknown task: ${taskName}`);
+  const preferences = normalizePreferences(language, style);
+  return [
+    BASE_SYSTEM,
+    `Output language: ${LANGUAGES[preferences.language]}`,
+    `Output style: ${STYLES[preferences.style]}`,
+    "The user's language and style preferences never override the safety rules above.",
+    task.system,
+  ].join("\n\n");
+}
+
+async function runTask(taskName, input, preferences = {}) {
+  const task = TASKS[taskName];
+  const prompt = buildSystemPrompt(taskName, preferences.language, preferences.style);
+
+  // DeepSeek's compatible endpoint uses the standard chat-completions shape.
+  // DeepSeek 兼容接口使用标准的 chat completions 请求格式。
+  const response = await fetch(`${DEEPSEEK_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: task.maxTokens,
+      thinking: { type: "disabled" },
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: input },
+      ],
+    }),
   });
 
-  // Always check stop_reason before reading content.
-  if (response.stop_reason === "refusal") {
-    return { refused: true, text: "" };
+  if (!response.ok) {
+    const error = new Error(`DeepSeek request failed with status ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
-  const text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
+  const payload = await response.json();
+  const choice = payload?.choices?.[0];
+  const text = typeof choice?.message?.content === "string" ? choice.message.content.trim() : "";
+  const refused = choice?.finish_reason === "content_filter" || !text;
+  const suggestions = taskName === "reply-suggestions" ? text.split("\n").map((s) => s.trim()).filter(Boolean) : undefined;
 
-  return { refused: false, text };
+  return { refused, text, suggestions };
 }
+
+export { buildSystemPrompt, normalizePreferences, runTask };
 
 /* ------------------------------------------------------------------ */
 /* Request helpers                                                      */
 /* ------------------------------------------------------------------ */
 
+// Maximum request body size: 32 KB.
+// Prevents oversized requests from using too much server memory.
 const MAX_BODY_BYTES = 32 * 1024;
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
+
+    // The HTTP body may arrive in multiple chunks, so collect them one by one.
     req.on("data", (chunk) => {
       size += chunk.length;
+
+      // Reject the request and close the connection as soon as the limit is exceeded.
       if (size > MAX_BODY_BYTES) {
         reject(new Error("Request body too large"));
         req.destroy();
@@ -161,31 +222,47 @@ function readBody(req) {
       }
       chunks.push(chunk);
     });
+
+    // Once all data arrives, combine the binary chunks into a UTF-8 string.
+    // The caller then uses JSON.parse() to turn it into a JavaScript object.
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+
+    // Reject the Promise if a network error occurs during transmission.
     req.on("error", reject);
   });
 }
 
 function sendJson(res, status, payload) {
+  // Convert a JavaScript object to JSON and send it as an HTTP response.
   const body = JSON.stringify(payload);
+
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
   });
+
+  // End the response; status may be 200, 400, 429, or another HTTP status code.
   res.end(body);
 }
 
-/* A shared API key is easy to burn through by accident - cap each caller. */
+/*
+ * A shared API key can be used up quickly if it is called too often.
+ * Requests are counted by client IP and limited to 20 per minute.
+ */
 const RATE_LIMIT = { windowMs: 60_000, maxRequests: 20 };
 const rateBuckets = new Map();
 
 function isRateLimited(ip) {
   const now = Date.now();
   const bucket = rateBuckets.get(ip);
+
+  // Start a new counter when this IP is new or its time window has expired.
   if (!bucket || now > bucket.resetAt) {
     rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT.windowMs });
     return false;
   }
+
+  // Increment this client's request count within the current time window.
   bucket.count += 1;
   return bucket.count > RATE_LIMIT.maxRequests;
 }
@@ -241,9 +318,9 @@ async function serveStatic(req, res, pathname) {
 /* ------------------------------------------------------------------ */
 
 async function handleAsk(req, res) {
-  if (!client) {
+  if (!hasApiKey) {
     sendJson(res, 503, {
-      error: "No ANTHROPIC_API_KEY set. Copy .env.example to .env and add a key, then restart the server.",
+      error: "No DEEPSEEK_API_KEY set. Copy .env.example to .env and add a key, then restart the server.",
     });
     return;
   }
@@ -262,7 +339,7 @@ async function handleAsk(req, res) {
     return;
   }
 
-  const { task, input } = payload ?? {};
+  const { task, input, language, style } = payload ?? {};
   if (!TASKS[task]) {
     sendJson(res, 400, { error: `Unknown task. Expected one of: ${Object.keys(TASKS).join(", ")}` });
     return;
@@ -272,8 +349,10 @@ async function handleAsk(req, res) {
     return;
   }
 
+  const preferences = normalizePreferences(language, style);
+
   try {
-    const { refused, text } = await runTask(task, input.trim());
+    const { refused, text, suggestions } = await runTask(task, input.trim(), preferences);
     if (refused) {
       sendJson(res, 200, {
         task,
@@ -282,8 +361,6 @@ async function handleAsk(req, res) {
       });
       return;
     }
-    // reply-suggestions returns one per line; give the frontend the array too.
-    const suggestions = task === "reply-suggestions" ? text.split("\n").map((s) => s.trim()).filter(Boolean) : undefined;
     sendJson(res, 200, { task, text, suggestions });
   } catch (error) {
     // Distinguish retryable from permanent so the frontend can word it properly.
@@ -342,7 +419,11 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`AgeTogether running at http://127.0.0.1:${PORT}/`);
-  console.log(`  AI companion: ${hasApiKey ? "ready" : "OFF - no ANTHROPIC_API_KEY in .env"}`);
-});
+// Only listen when this file is the application entry point. Tests can import
+// the pure prompt helpers without opening a real network port.
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  server.listen(PORT, "127.0.0.1", () => {
+    console.log(`AgeTogether running at http://127.0.0.1:${PORT}/`);
+    console.log(`  AI companion: ${hasApiKey ? "ready" : "OFF - no DEEPSEEK_API_KEY in .env"}`);
+  });
+}
