@@ -40,9 +40,6 @@ window.appData = {
     },
     selectedFriendId: 1,
 
-    // lat/lng are approximate suburb-level coordinates (WGS84) for the demo
-    // map view. Real discovery-place rows from the database carry precise
-    // coordinates instead - see mapDiscoveryPlace() in script.js.
     activities: [
       { id: dataNextId(), category: "Walking", icon: "&#x1F6B6;", title: "Morning Walk at Carlton Gardens", location: "Carlton Gardens, Melbourne &middot; 1.2 km away", date: "Wednesday, 20 Aug &middot; 8:00 am", price: "Free", copy: "A friendly guided morning walk through the gardens. All fitness levels welcome. Walking poles provided.", access: "Flat paths, wheelchair accessible", organiser: "Melbourne City Council", saved: false, joined: false, lat: -37.80611, lng: 144.97028 },
       { id: dataNextId(), category: "Gardening", icon: "&#x1F331;", title: "Community Gardening Group", location: "Fitzroy Community Garden &middot; 2.4 km away", date: "Saturday, 23 Aug &middot; 10:00 am", price: "Free", copy: "Grow vegetables and flowers with friendly neighbours. No experience needed - tools and gloves provided.", access: "Ground level, seated options available", organiser: "Fitzroy Community Hub", saved: false, joined: false, lat: -37.7984, lng: 144.9785 },

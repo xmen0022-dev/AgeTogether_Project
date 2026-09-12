@@ -4,22 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgeTogether Australia App</title>
-<<<<<<< Updated upstream
-    <link rel="stylesheet" href="./styles.css" />
-=======
     <link rel="stylesheet" href="/styles.css" />
     <!-- Leaflet: open-source map library, no API key required, tiles from OpenStreetMap -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
->>>>>>> Stashed changes
   </head>
   <body>
     <header class="figma-bar">
       <span>AgeTogether Australia App</span>
     </header>
 
+    <nav class="top-nav" aria-label="Main navigation">
+      <div class="nav-left">
+        <button data-route="home"><span>&#x1F3E0;</span>Home</button>
+        <button data-route="family"><span>&#x1F3E1;</span>Family</button>
+        <button data-route="friends"><span>&#x1F4CC;</span>Friends</button>
+        <button data-route="social"><span>&#x1F5FA;</span>Social</button>
+        <button data-route="ai"><span>&#x1F43E;</span>AI Companion</button>
+      </div>
+      <button class="profile-nav" data-route="profile"><span>&#x1F464;</span>Profile</button>
+    </nav>
+
     <main id="app" class="page"></main>
 
-    <button id="pet" class="pet" aria-label="Open AI Companion">
+    <button id="pet" class="pet" aria-label="Pet your companion">
       <span class="ear left"></span>
       <span class="ear right"></span>
       <span class="eye left"></span>
@@ -27,22 +34,9 @@
       <span class="nose"></span>
     </button>
 
-<<<<<<< Updated upstream
-    <nav class="bottom-nav" aria-label="Main navigation">
-      <button data-route="home"><span>&#x1F3E0;</span>Home</button>
-      <button data-route="family"><span>&#x1F3E1;</span>Family</button>
-      <button data-route="friends"><span>&#x1F4CC;</span>Friends</button>
-      <button data-route="social"><span>&#x1F5FA;</span>Social</button>
-      <button data-route="profile"><span>&#x1F464;</span>Profile</button>
-      <button data-route="ai"><span>&#x1F43E;</span>AI Companion</button>
-    </nav>
-
-    <script src="./script.js"></script>
-=======
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="/data.js"></script>
     <script src="/script.js"></script>
     <script src="/pet.js"></script>
->>>>>>> Stashed changes
   </body>
 </html>

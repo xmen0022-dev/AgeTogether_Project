@@ -1,11 +1,11 @@
 const app = document.querySelector("#app");
 const pet = document.querySelector("#pet");
-const nav = [...document.querySelectorAll(".bottom-nav button")];
+const nav = [...document.querySelectorAll(".top-nav button")];
 
+// Current visible page. This simple router lets the prototype work like a
+// multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
-<<<<<<< Updated upstream
-=======
 let activityView = "list"; // "list" or "map" - only affects the Activities tab
 let activityMap = null; // Leaflet map instance, recreated on every render since
 // app.innerHTML replaces the DOM node the previous map instance was bound to.
@@ -14,102 +14,35 @@ let aiRequestNumber = 0;
 // pet.js reads this shared object when it creates localised speech or tips.
 // pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
 window.aiPreferences = aiPreferences;
->>>>>>> Stashed changes
 
+// The floating companion button is only useful after the landing page, so this
+// list controls where it appears.
 const pagesWithPet = new Set(["family", "friends", "manage-family", "manage-friends", "social", "profile", "ai"]);
 
 /* ------------------------------------------------------------------ */
-/* Data (in-memory state)                                              */
+/* Runtime state loaded from data.js                                   */
 /* ------------------------------------------------------------------ */
 
-let idSeed = 1000;
+const appData = window.appData || {};
+let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
 
-const COLORS = ["peach", "purple", "blue", "green"];
-
-const state = {
-  // Family
-  familyMembers: [
-    { id: 1, initial: "D", name: "Daniel", rel: "Son", contact: "daniel@email.com", color: "peach", muted: false },
-    { id: 2, initial: "S", name: "Sophie", rel: "Granddaughter", contact: "0412 345 678", color: "purple", muted: false },
-    { id: 3, initial: "L", name: "Linda", rel: "Daughter", contact: "linda@email.com", color: "blue", muted: false },
-    { id: 4, initial: "J", name: "James", rel: "Carer", contact: "0498 765 432", color: "green", muted: false },
-  ],
-  familyNotes: [
-    { id: nextId(), memberId: 1, text: "Doctor appointment on Friday at 2 pm &#x1FA7A;", date: "18 Aug", done: false },
-    { id: nextId(), memberId: 2, text: "Remember to drink water today &#x1F4A7;", date: "18 Aug", done: false },
-    { id: nextId(), memberId: 3, text: "I will call tonight after dinner &#x1F4DE;", date: "18 Aug", done: true },
-    { id: nextId(), memberId: 4, text: "Medication checked &#x2713;", date: "18 Aug", done: true },
-    { id: nextId(), memberId: 2, text: "Let's have lunch this weekend! &#x1F37D;", date: "17 Aug", done: false },
-    { id: nextId(), memberId: 1, text: "Your favourite show is on at 7 pm tonight &#x1F4FA;", date: "17 Aug", done: false },
-  ],
-  familyFilterId: null, // null = show notes from everyone
-  familyNotePickId: 1,
-
-  // Friends
-  friends: [
-    { id: 1, initial: "M", name: "Margaret", color: "peach", contact: "Connected via Email invite", muted: false },
-    { id: 2, initial: "D", name: "David", color: "blue", contact: "Connected via Phone invite", muted: false },
-    { id: 3, initial: "H", name: "Helen", color: "purple", contact: "Connected via Invitation code", muted: false },
-  ],
-  friendNotes: {
-    1: [
-      { id: nextId(), author: "friend", color: "peach", text: "Good morning! I hope you are having a lovely peaceful day &#x2600;", date: "18 Aug" },
-      { id: nextId(), author: "you", color: "green", text: "Good morning Margaret! The garden is looking beautiful today.", date: "18 Aug" },
-      { id: nextId(), author: "friend", color: "yellow", text: "Would you like to walk together this weekend? I know a lovely path by the lake.", date: "17 Aug" },
-      { id: nextId(), author: "you", color: "blue", text: "Yes, that sounds lovely. Saturday morning would be perfect!", date: "17 Aug" },
-      { id: nextId(), author: "friend", color: "peach", text: "Wonderful! I will bring some homemade biscuits to share &#x1F36A;", date: "17 Aug" },
-    ],
-    2: [],
-    3: [],
-  },
-  selectedFriendId: 1,
-
-  // Social
-  activities: [
-    { id: nextId(), category: "Walking", icon: "&#x1F6B6;", title: "Morning Walk at Carlton Gardens", location: "Carlton Gardens, Melbourne &middot; 1.2 km away", date: "Wednesday, 20 Aug &middot; 8:00 am", price: "Free", copy: "A friendly guided morning walk through the gardens. All fitness levels welcome. Walking poles provided.", access: "Flat paths, wheelchair accessible", organiser: "Melbourne City Council", saved: false, joined: false },
-    { id: nextId(), category: "Gardening", icon: "&#x1F331;", title: "Community Gardening Group", location: "Fitzroy Community Garden &middot; 2.4 km away", date: "Saturday, 23 Aug &middot; 10:00 am", price: "Free", copy: "Grow vegetables and flowers with friendly neighbours. No experience needed - tools and gloves provided.", access: "Ground level, seated options available", organiser: "Fitzroy Community Hub", saved: false, joined: false },
-    { id: nextId(), category: "Library event", icon: "&#x1F4BB;", title: "Library Digital Skills Workshop", location: "Melbourne City Library &middot; 0.9 km away", date: "Thursday, 21 Aug &middot; 2:00 pm", price: "Free", copy: "Learn how to use your phone and tablet safely. Friendly staff help at your own pace. Bring your device.", access: "Fully accessible, lift available", organiser: "State Library Victoria", saved: false, joined: false },
-    { id: nextId(), category: "Coffee group", icon: "&#x2615;", title: "Seniors Coffee Morning", location: "Brunswick Community Centre &middot; 3.1 km away", date: "Friday, 22 Aug &middot; 10:30 am", price: "Low cost - $3 donation", copy: "A warm and welcoming morning tea with other seniors. Chat, play cards, or simply enjoy the company.", access: "Accessible entrance, seating provided", organiser: "Brunswick Seniors Network", saved: false, joined: false },
-    { id: nextId(), category: "Health workshop", icon: "&#x1F938;", title: "Gentle Exercise Class", location: "Northcote Leisure Centre &middot; 4.0 km away", date: "Tuesday & Friday &middot; 9:30 am", price: "Low cost - $5 per session", copy: "Low-impact stretching and gentle movement for older adults. Instructor led, suitable for all abilities.", access: "Accessible venue, chairs available", organiser: "Northcote Leisure Centre", saved: false, joined: false },
-  ],
-  activityFilter: "All",
-
-  newsItems: [
-    { id: nextId(), icon: "&#x1F9E0;", tag: "Healthy Ageing", title: "Staying socially connected helps protect brain health", copy: "New research shows that regular contact with friends and family can significantly reduce the risk of cognitive decline in older adults.", source: "Australian Institute of Health and Welfare", saved: false },
-    { id: nextId(), icon: "&#x1F6E1;", tag: "Scam Safety", title: "New phone scam targeting older Australians - what to know", copy: "Scammers are pretending to be from Medicare. They will never call you asking for personal details. Hang up and call the official number.", source: "Scamwatch Australia", saved: false },
-    { id: nextId(), icon: "&#x1F91D;", tag: "Local Community", title: "Free community programs available across Victoria this August", copy: "Local councils are offering free social events, exercise classes, and digital skills workshops for seniors throughout August and September.", source: "Victorian Seniors Festival", saved: false },
-  ],
-
-  // Profile
-  profile: {
-    fullName: "Margaret Lee",
-    preferredName: "Margaret",
-    age: "71",
-    phone: "0412 345 678",
-    email: "margaret.lee@email.com",
-    suburb: "Carlton, VIC",
-    emergencyContact: "Daniel Lee - 0423 456 789",
-    accessibility: "Prefer seating. Hearing aid user.",
-  },
-  profileJustSaved: false,
-  profileToggles: [
-    { key: "showName", title: "Show my name", copy: "Your preferred name will be shown.", on: true },
-    { key: "showPhone", title: "Show my phone number", copy: "Your phone number may be given to the organiser.", on: false },
-    { key: "showEmail", title: "Show my email address", copy: "Your email may be given to the organiser.", on: true },
-    { key: "showSuburb", title: "Show my suburb", copy: "Helps organisers suggest nearby activities.", on: true },
-    { key: "shareAccessibility", title: "Share accessibility needs with activity organisers", copy: "Helps organisers prepare appropriate support.", on: true },
-    { key: "shareEmergency", title: "Share emergency contact only when needed", copy: "Only shared in an emergency situation.", on: false },
-  ],
-};
+const COLORS = appData.colors || ["peach", "purple", "blue", "green"];
+// Make a runtime copy of the seed data from data.js.
+// This is important for the prototype: user actions can mutate `state` without
+// changing the original seed object. In a future backend version, this state
+// would be populated by API responses instead of the static data.js file.
+const state = JSON.parse(JSON.stringify(appData.state || {}));
+const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
+let activitiesSource = "static";
+let activitiesLoading = false;
+let activitiesError = "";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
 
 function setRoute(nextRoute) {
-<<<<<<< Updated upstream
-=======
   // Change the active screen and re-render the app from the current state.
   // In a full app this would usually be handled by a router library.
   // Tear down the Leaflet map first if we're leaving Social - its container
@@ -118,19 +51,21 @@ function setRoute(nextRoute) {
     activityMap.remove();
     activityMap = null;
   }
->>>>>>> Stashed changes
   route = nextRoute;
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
 
 function activeRoute() {
+  // Management pages still belong to their parent navigation items, so the
+  // bottom navigation highlights Family/Friends instead of adding extra tabs.
   if (route === "manage-family") return "family";
   if (route === "manage-friends") return "friends";
   return route;
 }
 
 function pageHead(title, subtitle) {
+  // Reusable header component for pages that use a top title area.
   return `
     <section class="page-head">
       <h1>${title}</h1>
@@ -140,19 +75,21 @@ function pageHead(title, subtitle) {
 }
 
 function getFamilyMember(id) {
+  // Lookup helper used by notes and management actions.
   return state.familyMembers.find((m) => m.id === id);
 }
 
 function getFriend(id) {
+  // Lookup helper used by the Friends board and friend management screen.
   return state.friends.find((f) => f.id === id);
 }
 
 function nextColor(existingCount) {
+  // Gives newly added people a rotating colour so generated cards still match
+  // the existing visual system.
   return COLORS[existingCount % COLORS.length];
 }
 
-<<<<<<< Updated upstream
-=======
 function activityIcon(category) {
   const value = `${category || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
@@ -193,7 +130,10 @@ async function loadDatabaseActivities() {
   if (route === "social") renderSocial();
 
   try {
-    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=24");
+    // limit=200 comfortably covers all Tier 1 discovery places currently in
+    // the database (115) so the Activities map shows everything, not just
+    // the closest handful. The server still enforces its own hard cap.
+    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=200");
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
@@ -211,30 +151,47 @@ async function loadDatabaseActivities() {
   }
 }
 
->>>>>>> Stashed changes
 /* ------------------------------------------------------------------ */
 /* Home                                                                 */
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
+  // Landing page: explains the purpose of the service and gives simple entry
+  // points into the main tools.
   app.innerHTML = `
     <section class="home-wrap">
-      <div class="check-mark">&#x2713;</div>
-      <h1>AgeTogether Australia</h1>
-      <p>A simple way to stay connected with friends and family.</p>
-      <section class="menu-list">
-        ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "A private board for trusted care notes, reminders, and messages from your family.")}
-        ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A shared noticeboard with friends you already know - calm, low-pressure connection.")}
-        ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Find nearby community activities and helpful local news for healthy ageing.")}
-        ${homeCard("profile", "profile-card", "&#x1F464;", "Profile", "Manage your personal information and privacy settings.")}
-        ${homeCard("ai", "ai-card", "&#x1F43E;", "AI Companion", "A friendly helper for simple questions, daily suggestions, and safety tips.")}
+      <section class="home-hero">
+        <div class="hero-copy">
+          <span class="home-kicker">Support for healthy ageing</span>
+          <h1>AgeTogether Australia</h1>
+          <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
+          <div class="hero-actions">
+            <button class="get-started" data-route="family">Get Started</button>
+            <button class="outline-btn" data-route="social">Explore Activities</button>
+          </div>
+        </div>
+        <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
+          <img src="https://images.unsplash.com/photo-1764173040319-4db683637611?auto=format&fit=crop&w=1200&q=80" alt="Two older adults smiling together in a park" />
+        </div>
       </section>
-      <button class="get-started" data-route="family">Get Started</button>
+
+      <section class="home-section">
+        <div class="section-heading">
+          <span class="home-kicker">Main areas</span>
+          <h2>Choose where to go</h2>
+        </div>
+        <section class="menu-list">
+          ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members.")}
+          ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know.")}
+          ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information.")}
+        </section>
+      </section>
     </section>
   `;
 }
 
 function homeCard(routeName, className, icon, title, copy) {
+  // Small reusable card component for the Home menu.
   return `
     <button class="menu-card ${className}" data-route="${routeName}">
       <span class="menu-icon">${icon}</span>
@@ -252,6 +209,10 @@ function homeCard(routeName, className, icon, title, copy) {
 /* ------------------------------------------------------------------ */
 
 function renderFamily() {
+  // Family Board is data-driven:
+  // 1. Filter notes based on `state.familyFilterId`.
+  // 2. Convert every visible note object into a note card.
+  // 3. Rebuild the page from the latest state.
   const visibleNotes = state.familyNotes.filter((n) => !state.familyFilterId || n.memberId === state.familyFilterId);
 
   app.innerHTML = `
@@ -297,6 +258,8 @@ function renderFamily() {
 }
 
 function familyFilterChip(member) {
+  // Member filter chips are generated from `state.familyMembers`.
+  // The active chip is determined by the current filter state.
   const active = state.familyFilterId === member.id;
   return `
     <button class="pill ${active ? "active" : ""} ${member.color}-pill" data-family-filter="${member.id}">
@@ -306,6 +269,8 @@ function familyFilterChip(member) {
 }
 
 function familyNoteCard(n) {
+  // A note only stores `memberId`; this function joins note data with member
+  // data so the UI can show the member name, relationship, colour, and initial.
   const member = getFamilyMember(n.memberId);
   if (!member) return "";
   const relation = member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
@@ -322,6 +287,9 @@ function familyNoteCard(n) {
 }
 
 function renderManageFamily() {
+  // Management screen for trusted family members.
+  // The member list is rendered from `state.familyMembers`, so adding/removing
+  // members immediately changes the list after re-rendering.
   app.innerHTML = `
     ${pageHead("Manage Family Members", "Control who can post on your family board")}
     <section class="container narrow">
@@ -347,6 +315,8 @@ function renderManageFamily() {
 }
 
 function familyMemberRow(m) {
+  // One row in the family member management list.
+  // `muted` only changes the local prototype state at the moment.
   return `
     <article class="member ${m.muted ? "muted" : ""}">
       <span class="avatar ${m.color}">${m.initial}</span>
@@ -362,6 +332,10 @@ function familyMemberRow(m) {
 /* ------------------------------------------------------------------ */
 
 function renderFriends() {
+  // Friends Board is also data-driven:
+  // - `state.selectedFriendId` decides which board is open.
+  // - `state.friendNotes[friend.id]` provides that board's messages.
+  // - Posting a new message updates the selected friend's note array.
   const friend = getFriend(state.selectedFriendId);
   const notes = friend ? state.friendNotes[friend.id] || [] : [];
 
@@ -411,6 +385,8 @@ function renderFriends() {
 }
 
 function friendPick(friend) {
+  // Friend selector card. The note count is calculated from the current data,
+  // so it updates after new messages are posted.
   const active = friend.id === state.selectedFriendId;
   const noteCount = (state.friendNotes[friend.id] || []).length;
   return `
@@ -423,6 +399,8 @@ function friendPick(friend) {
 }
 
 function friendNoteCard(n, friend) {
+  // Friend notes have two possible authors: "you" or "friend".
+  // The displayed initial/name changes based on the author value.
   const isYou = n.author === "you";
   const initial = isYou ? "Y" : friend.initial;
   const name = isYou ? "You" : friend.name;
@@ -439,6 +417,8 @@ function friendNoteCard(n, friend) {
 }
 
 function renderManageFriends() {
+  // Management screen for trusted friends.
+  // This supports the prototype flow for inviting known contacts only.
   app.innerHTML = `
     ${pageHead("Manage Friends", "Control your trusted friend connections")}
     <section class="container narrow">
@@ -465,6 +445,8 @@ function renderManageFriends() {
 }
 
 function friendMemberRow(f) {
+  // One row in the friend management list.
+  // View, mute, and remove buttons are wired through data attributes.
   return `
     <article class="member ${f.muted ? "muted" : ""}">
       <span class="avatar ${f.color}">${f.initial}</span>
@@ -481,6 +463,9 @@ function friendMemberRow(f) {
 /* ------------------------------------------------------------------ */
 
 function renderSocial() {
+  // Social page switches between three data views:
+  // activities, news, and saved items. `socialTab` controls which renderer is
+  // used without changing the overall page shell.
   const content = {
     activities: renderActivities(),
     news: renderNews(),
@@ -512,15 +497,28 @@ function renderSocial() {
   }
 }
 
-const ACTIVITY_FILTERS = ["All", "Walking", "Gardening", "Coffee group", "Library event", "Health workshop", "Senior community"];
+function activityFilters() {
+  return ["All", ...new Set(state.activities.map((a) => a.category).filter(Boolean))];
+}
 
 function renderActivities() {
+  // Activity cards are generated from `state.activities`.
+  // The filter is a simple category match, which demonstrates a transparent
+  // data-driven discovery baseline suitable for Iteration 1.
   const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
-    <p class="muted section-copy">Safe, welcoming local events designed for older adults.</p>
+    <p class="muted section-copy">
+      ${
+        activitiesSource === "database"
+          ? "Showing nearby discovery places from the PostgreSQL/PostGIS database. Times and bookings should be checked with the venue."
+          : "Safe, welcoming sample events designed for older adults."
+      }
+    </p>
+    ${activitiesLoading ? `<p class="info-note">Loading places from the database...</p>` : ""}
+    ${activitiesError ? `<p class="info-note warning-note">${activitiesError}</p>` : ""}
     <div class="chips filter-row">
-      ${ACTIVITY_FILTERS.map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
+      ${activityFilters().map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
     </div>
     <div class="view-toggle">
       <button class="tab ${activityView === "list" ? "active" : ""}" data-activity-view="list">&#x1F4CB; List view</button>
@@ -532,9 +530,7 @@ function renderActivities() {
       <section class="map-panel">
         <div id="activity-map" class="activity-map"></div>
         <p class="muted small map-caption">
-          ${
-            filtered.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng)).length
-          } of ${filtered.length} activities shown on the map &middot; tap a pin for details
+          ${filtered.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng)).length} of ${filtered.length} activities shown on the map &middot; tap a pin for details
         </p>
       </section>
     `
@@ -551,6 +547,8 @@ function renderActivities() {
 }
 
 function activity(a) {
+  // Reusable card for one activity/place suggestion.
+  // The same component is used in both the Activities tab and Saved tab.
   return `
     <article class="activity-card">
       <div class="card-top">
@@ -562,7 +560,15 @@ function activity(a) {
       <p><span class="small-badge blue-badge">&#x1F5D3; ${a.date}</span> <span class="small-badge">${a.price}</span></p>
       <p>${a.copy}</p>
       <p class="muted small">&#x267F; ${a.access}<br />&#x1F3E2; ${a.organiser}</p>
-      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${a.joined ? "&#x2713; Joined - tap to leave" : "Join Activity"}</button>
+      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${
+        a.source === "database"
+          ? a.joined
+            ? "&#x2713; Interested - tap to remove"
+            : "Mark as Interested"
+          : a.joined
+            ? "&#x2713; Joined - tap to leave"
+            : "Join Activity"
+      }</button>
     </article>
   `;
 }
@@ -611,6 +617,7 @@ function initActivityMap(activities) {
 }
 
 function renderNews() {
+  // News cards are generated from `state.newsItems`.
   return `
     <h2>Useful news & information</h2>
     <p class="muted section-copy">Simple, helpful news for healthy and connected living.</p>
@@ -621,6 +628,7 @@ function renderNews() {
 }
 
 function news(n) {
+  // Reusable card for one news item. Saved state controls the button label.
   return `
     <article class="news-card">
       <div class="card-top">
@@ -636,6 +644,8 @@ function news(n) {
 }
 
 function renderSaved() {
+  // Saved view is derived from the data, not stored as a separate list.
+  // It collects activities/news where `saved === true`.
   const savedActivities = state.activities.filter((a) => a.saved);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
@@ -668,6 +678,8 @@ function renderSaved() {
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
+  // Profile page reads all fields from `state.profile`.
+  // Saving the form writes values back into state, then re-renders this page.
   const p = state.profile;
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
@@ -705,10 +717,12 @@ function renderProfile() {
 }
 
 function profileField(id, label, value) {
+  // Reusable input field. The id naming is used later when saving profile data.
   return `<div class="field"><label>${label}</label><input id="profile-${id}" value="${value}" /></div>`;
 }
 
 function toggle(t) {
+  // Privacy toggle row. Clicking the row flips the `on` value in state.
   return `
     <article class="toggle-row ${t.on ? "on" : ""}" data-toggle-key="${t.key}">
       <span class="switch"></span>
@@ -719,10 +733,31 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI (unchanged - out of scope)                                       */
+/* AI page and Companion integration                                  */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
+  // Rebuild the AI page whenever it is opened, then let pet.js mount the setup panel.
+  // Reminder values come from the Pet module so the page reflects saved settings.
+  const reminders = window.AgePet?.getReminderSettings?.() ?? {
+    water: { enabled: true, time: "10:00" },
+    medication: { enabled: true, time: "12:00" },
+    movement: { enabled: true, time: "16:00" },
+  };
+
+  const reminderRow = (kind, label, copy) => `
+    <div class="reminder-row">
+      <label class="reminder-toggle">
+        <input type="checkbox" data-ai-reminder="${kind}" data-ai-reminder-field="enabled" ${reminders[kind].enabled ? "checked" : ""} />
+        <span><strong>${label}</strong><small class="muted">${copy}</small></span>
+      </label>
+      <label class="reminder-time">
+        <span class="sr-only">${label} time</span>
+        <input type="time" value="${reminders[kind].time}" data-ai-reminder="${kind}" data-ai-reminder-field="time" />
+      </label>
+    </div>
+  `;
+
   app.innerHTML = `
     ${pageHead("AI Companion", "Your friendly helper for questions, daily ideas, and safety tips")}
     <section class="container narrow">
@@ -731,24 +766,96 @@ function renderAI() {
           <span class="simple-pet"><span class="simple-face"></span></span>
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
+        <section class="ai-preferences panel">
+          <h2>How would you like me to speak?</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label for="ai-language">Language</label>
+              <select id="ai-language" data-ai-preference="language">
+                <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
+                <option value="zh-CN" ${aiPreferences.language === "zh-CN" ? "selected" : ""}>简体中文</option>
+                <option value="zh-TW" ${aiPreferences.language === "zh-TW" ? "selected" : ""}>繁體中文</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ai-style">Reading style</label>
+              <select id="ai-style" data-ai-preference="style">
+                <option value="simple" ${aiPreferences.style === "simple" ? "selected" : ""}>Simple and clear</option>
+                <option value="standard" ${aiPreferences.style === "standard" ? "selected" : ""}>Friendly and standard</option>
+                <option value="expressive" ${aiPreferences.style === "expressive" ? "selected" : ""}>Warm and expressive</option>
+              </select>
+            </div>
+          </div>
+        </section>
+        <section class="ai-reminders panel">
+          <h2>Gentle daily reminders</h2>
+          <p class="muted small">These reminders run while this page is open. You can change the times anytime.</p>
+          <div class="reminder-list">
+            ${reminderRow("water", "Water", "Have a little drink.")}
+            ${reminderRow("medication", "Medicine", "Follow your usual plan.")}
+            ${reminderRow("movement", "Movement", "Try gentle movement if safe.")}
+          </div>
+        </section>
         <p class="muted quick-label"><strong>Quick questions - tap one to ask:</strong></p>
         <div class="quick-questions">
-          <button class="question">"How do I avoid scam messages?"</button>
-          <button class="question">"Remind me to call my family"</button>
-          <button class="question">"What can I do today?"</button>
+          <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
+          <button class="question" data-ai-question="How can I remember to call my family?">"Remind me to call my family"</button>
+          <button class="question" data-ai-question="What gentle activities could I do today?">"What can I do today?"</button>
         </div>
         <section class="panel">
           <h2>Ask your companion</h2>
-          <div class="ask-box"><input placeholder="Type your question here..." /><button class="primary">Ask AI</button></div>
+          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
+          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
         </section>
         <div class="wide-actions">
-          <button class="primary">&#x1F33F; Daily Suggestion</button>
-          <button class="blue-btn">&#x1F6E1; Safety Tip</button>
+          <button class="primary" data-ai-action="daily-suggestion">&#x1F33F; Daily Suggestion</button>
+          <button class="blue-btn" data-ai-action="safety-tip">&#x1F6E1; Safety Tip</button>
         </div>
+        <!--
+          Companion setup mount point.
+          pet.js fills this empty container with the photo picker, status card,
+          and companion history after the AI page has been rendered.
+        -->
+        <section class="panel" id="pet-setup"></section>
         <p class="muted secure-copy">&#x1F512; Your conversations are private and secure.</p>
       </section>
     </section>
   `;
+
+  // Optional chaining keeps the AI page usable if the Companion module is unavailable.
+  window.AgePet?.mountSetup();
+}
+
+// Send one named task to the server and render the response as plain text.
+// 将一个命名任务发送到服务端，并以纯文本安全显示返回结果。
+async function askCompanion(task, input) {
+  const answer = document.querySelector("#ai-answer");
+  if (!answer || !input.trim()) return;
+
+  const requestNumber = ++aiRequestNumber;
+  answer.className = "ai-answer loading";
+  answer.textContent = "Your companion is thinking...";
+
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task, input: input.trim(), ...aiPreferences }),
+    });
+    const payload = await response.json();
+    if (requestNumber !== aiRequestNumber) return;
+    if (!response.ok) throw new Error(payload.error || "The companion could not answer that.");
+
+    answer.className = "ai-answer";
+    answer.textContent = payload.text || "Your companion did not have an answer for that one.";
+    // Keep the full answer in the panel, but show a short, safe version above Pet.
+    // 完整答案留在面板中，同时把简短纯文本回复显示在 Pet 头顶。
+    window.AgePet?.speak(payload.text, { kind: "ai" });
+  } catch (error) {
+    if (requestNumber !== aiRequestNumber) return;
+    answer.className = "ai-answer error";
+    answer.textContent = error.message || "The companion is unavailable right now.";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -756,6 +863,8 @@ function renderAI() {
 /* ------------------------------------------------------------------ */
 
 function render() {
+  // Central render function. Every route rebuilds the visible UI from the
+  // current data state. This is the main data-driven pattern in the prototype.
   nav.forEach((button) => button.classList.toggle("active", button.dataset.route === activeRoute()));
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
 
@@ -774,14 +883,21 @@ function render() {
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
-  // Navigation
+  // Event delegation keeps the interaction code in one place. Instead of
+  // attaching separate click listeners after every render, the document listens
+  // once and checks which data-* attribute was clicked.
+
+  // Navigation: any element with data-route changes the active screen. The
+  // render functions recreate the visible page from the current state object.
   const routeTarget = event.target.closest("[data-route]");
   if (routeTarget) {
     setRoute(routeTarget.dataset.route);
     return;
   }
 
-  // Social tab switching
+  // Social tab switching: this is local UI state only. In a real backend setup,
+  // this would usually remain on the frontend because it does not need to be
+  // saved to the database.
   const tabTarget = event.target.closest("[data-social-tab]");
   if (tabTarget) {
     socialTab = tabTarget.dataset.socialTab;
@@ -791,8 +907,35 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  /* ---------------- AI Companion --------------------------------- */
+
+  // Quick questions use the same server task as free-form questions.
+  // 快捷问题和自由输入共用同一个服务端 ask 任务。
+  const aiQuestion = event.target.closest("[data-ai-question]");
+  if (aiQuestion) {
+    askCompanion("ask", aiQuestion.dataset.aiQuestion);
+    return;
+  }
+
+  // Action buttons provide carefully worded prompts for common use cases.
+  // 操作按钮使用预先写好的提示，降低用户组织问题的负担。
+  const aiAction = event.target.closest("[data-ai-action]");
+  if (aiAction) {
+    const action = aiAction.dataset.aiAction;
+    if (action === "ask-ai") {
+      askCompanion("ask", document.querySelector("#ai-input")?.value || "");
+    } else if (action === "daily-suggestion") {
+      askCompanion("ask", "Suggest one gentle, low-cost activity I could consider today in Australia. Do not invent a specific event, time, price, or accessibility detail.");
+    } else if (action === "safety-tip") {
+      askCompanion("ask", "Give me one short general safety tip about suspicious messages and online scams. Do not tell me to click a link or call a number from a message.");
+    }
+    return;
+  }
+
   /* ---------------- Family ---------------- */
 
+  // Filter the family board by one family member. This changes only the current
+  // view, so it is stored in frontend state instead of persistent data.
   const familyFilter = event.target.closest("[data-family-filter]");
   if (familyFilter) {
     const id = Number(familyFilter.dataset.familyFilter);
@@ -801,6 +944,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Choose who the next family reminder/note will be sent to. This selected id
+  // is later used by handleAction("add-family-note").
   const pickFamilyMember = event.target.closest("[data-pick-family-member]");
   if (pickFamilyMember) {
     state.familyNotePickId = Number(pickFamilyMember.dataset.pickFamilyMember);
@@ -808,6 +953,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mark one family note as done or not done. Backend mapping:
+  // PATCH /family-notes/:id with { done: true/false }.
+  // In this prototype the note is found in state.familyNotes and updated in
+  // memory, so the change resets when the page is refreshed.
   const toggleFamilyNote = event.target.closest("[data-toggle-family-note]");
   if (toggleFamilyNote) {
     const id = Number(toggleFamilyNote.dataset.toggleFamilyNote);
@@ -817,6 +966,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mute/unmute one family member. Backend mapping:
+  // PATCH /family-members/:id with { muted: true/false }.
   const muteFamily = event.target.closest("[data-mute-family]");
   if (muteFamily) {
     const id = Number(muteFamily.dataset.muteFamily);
@@ -826,6 +977,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Remove a family member and also remove notes that belonged to them.
+  // Backend mapping:
+  // DELETE /family-members/:id, then either cascade-delete their notes in the
+  // database or return updated family member/note lists from the API.
   const removeFamily = event.target.closest("[data-remove-family]");
   if (removeFamily) {
     const id = Number(removeFamily.dataset.removeFamily);
@@ -841,6 +996,8 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Friends ---------------- */
 
+  // Select which friend's shared board is open. This is view state, not
+  // database state, because it only controls what the current user is looking at.
   const selectFriend = event.target.closest("[data-select-friend]");
   if (selectFriend) {
     state.selectedFriendId = Number(selectFriend.dataset.selectFriend);
@@ -848,6 +1005,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Like/unlike a friend's note. Backend mapping:
+  // POST /friend-notes/:id/like or DELETE /friend-notes/:id/like.
+  // A real backend would normally store who liked the note, not only a boolean.
   const toggleFriendLike = event.target.closest("[data-toggle-friend-like]");
   if (toggleFriendLike) {
     const id = Number(toggleFriendLike.dataset.toggleFriendLike);
@@ -862,6 +1022,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Mute/unmute friend messages. Backend mapping:
+  // PATCH /friends/:id with { muted: true/false }.
   const muteFriend = event.target.closest("[data-mute-friend]");
   if (muteFriend) {
     const id = Number(muteFriend.dataset.muteFriend);
@@ -871,6 +1033,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Remove a friend and their board data from the current account.
+  // Backend mapping:
+  // DELETE /friends/:id. The server would decide whether messages are deleted
+  // globally or only hidden from this user.
   const removeFriend = event.target.closest("[data-remove-friend]");
   if (removeFriend) {
     const id = Number(removeFriend.dataset.removeFriend);
@@ -885,6 +1051,9 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Social ---------------- */
 
+  // Activity category filter. This uses the activities loaded from data.js and
+  // filters them in the browser. If the dataset becomes large, this should move
+  // to an API query such as GET /activities?category=walking.
   const activityFilter = event.target.closest("[data-activity-filter]");
   if (activityFilter) {
     state.activityFilter = activityFilter.dataset.activityFilter;
@@ -892,8 +1061,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-<<<<<<< Updated upstream
-=======
   // Switch the Activities tab between the card list and the Leaflet map.
   const activityViewTarget = event.target.closest("[data-activity-view]");
   if (activityViewTarget) {
@@ -905,16 +1072,18 @@ document.addEventListener("click", (event) => {
   // Save/unsave a community activity. Backend mapping:
   // POST /saved-items with { type: "activity", id } or
   // DELETE /saved-items/activity/:id.
->>>>>>> Stashed changes
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
-    const id = Number(saveActivity.dataset.saveActivity);
-    const activityItem = state.activities.find((a) => a.id === id);
+    const id = saveActivity.dataset.saveActivity;
+    const activityItem = state.activities.find((a) => String(a.id) === id);
     if (activityItem) activityItem.saved = !activityItem.saved;
     renderSocial();
     return;
   }
 
+  // Save/unsave a news item. Backend mapping:
+  // POST /saved-items with { type: "news", id } or
+  // DELETE /saved-items/news/:id.
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -924,10 +1093,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Join/unjoin an activity. Backend mapping:
+  // POST /activity-registrations with { activityId } or
+  // DELETE /activity-registrations/:activityId.
+  // This is one of the clearest "backend interaction" points because a real
+  // site would need to save the registration, possibly send organiser details,
+  // and respect the profile sharing toggles.
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
-    const id = Number(joinActivity.dataset.joinActivity);
-    const activityItem = state.activities.find((a) => a.id === id);
+    const id = joinActivity.dataset.joinActivity;
+    const activityItem = state.activities.find((a) => String(a.id) === id);
     if (activityItem) activityItem.joined = !activityItem.joined;
     renderSocial();
     return;
@@ -935,6 +1110,9 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Profile ---------------- */
 
+  // Toggle profile privacy settings. Backend mapping:
+  // PATCH /profile/share-settings with { key, on }.
+  // These toggles decide what information may be shared when joining activities.
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -946,14 +1124,56 @@ document.addEventListener("click", (event) => {
 
   /* ---------------- Generic actions ---------------- */
 
+  // Form-style actions are routed through handleAction because they often need
+  // to read input values, validate them, create/update data objects, and then
+  // re-render the affected page.
   const action = event.target.closest("[data-action]");
   if (action) {
     handleAction(action.dataset.action);
   }
 });
 
+// Preferences are local UI state and are sent with the next API request.
+// 偏好属于当前页面状态，会随下一次 API 请求一起发送。
+document.addEventListener("change", (event) => {
+  const preference = event.target.closest("[data-ai-preference]");
+  if (preference) {
+    aiPreferences[preference.dataset.aiPreference] = preference.value;
+    return;
+  }
+
+  // Save one reminder field without rebuilding the page or losing focus.
+  // 修改提醒时只更新对应字段，不重建页面，避免输入框失去焦点。
+  const reminderInput = event.target.closest("[data-ai-reminder]");
+  if (!reminderInput) return;
+  const settings = window.AgePet?.getReminderSettings?.();
+  if (!settings) return;
+  const kind = reminderInput.dataset.aiReminder;
+  const field = reminderInput.dataset.aiReminderField;
+  settings[kind][field] = field === "enabled" ? reminderInput.checked : reminderInput.value;
+  window.AgePet?.setReminderSettings(settings);
+});
+
+// Handles actions that are closer to backend transactions: add a note, add a
+// family member, add a friend, post a message, or save profile changes.
+//
+// Current implementation:
+// - Reads values from form inputs in the DOM.
+// - Validates required fields in the browser.
+// - Updates the in-memory `state` object.
+// - Calls a render function so the UI shows the latest data.
+//
+// Future backend implementation:
+// - Replace each direct state mutation with fetch()/axios calls to the server.
+// - Let the backend create ids, validate data, and store records in the database.
+// - After the API responds, update `state` with the returned record/list and
+//   re-render the page. Add loading and error states around each request.
 function handleAction(action) {
   if (action === "add-family-note") {
+    // Create a new family reminder/note for the selected family member.
+    // Backend mapping:
+    // POST /family-notes with { memberId, text }
+    // Expected response: the created note with server id, date, and done status.
     const input = document.querySelector("#family-note-input");
     const text = input ? input.value.trim() : "";
     if (!text || !state.familyNotePickId) return;
@@ -969,18 +1189,28 @@ function handleAction(action) {
   }
 
   if (action === "focus-family-note") {
+    // Convenience action only: opens the family page and places the cursor in the
+    // note input. No backend or database call is needed.
     renderFamily();
     document.querySelector("#family-note-input")?.focus();
     return;
   }
 
   if (action === "mark-all-family-done") {
+    // Marks every visible family note as done. Backend mapping:
+    // PATCH /family-notes/bulk with { done: true }.
+    // A production app should send only the ids the user is allowed to update.
     state.familyNotes.forEach((n) => (n.done = true));
     renderFamily();
     return;
   }
 
   if (action === "add-family-member") {
+    // Add a trusted family member. Backend mapping:
+    // POST /family-members with { name, relationship, contact }.
+    // The backend should validate the contact method and send the invite.
+    // The frontend should then show the returned member status, for example
+    // "pending" or "active".
     const name = document.querySelector("#fam-add-name")?.value.trim();
     const rel = document.querySelector("#fam-add-rel")?.value.trim();
     const contact = document.querySelector("#fam-add-contact")?.value.trim();
@@ -1001,6 +1231,11 @@ function handleAction(action) {
   }
 
   if (action === "post-friend-note") {
+    // Post a message to the selected friend's shared board.
+    // Backend mapping:
+    // POST /friends/:friendId/notes with { text }.
+    // In a real app this should also include authentication so the server knows
+    // the author is the current logged-in user.
     const input = document.querySelector("#friend-note-input");
     const text = input ? input.value.trim() : "";
     if (!text || !state.selectedFriendId) return;
@@ -1017,6 +1252,11 @@ function handleAction(action) {
   }
 
   if (action === "add-friend") {
+    // Add someone the user already knows through email, phone, or invite code.
+    // Backend mapping:
+    // POST /friends/invitations with { name, email, phone, code }.
+    // The server should check that the invite is valid and prevent adding
+    // strangers who are not connected through an allowed contact method.
     const name = document.querySelector("#friend-add-name")?.value.trim();
     const email = document.querySelector("#friend-add-email")?.value.trim();
     const phone = document.querySelector("#friend-add-phone")?.value.trim();
@@ -1041,6 +1281,11 @@ function handleAction(action) {
   }
 
   if (action === "save-profile") {
+    // Save personal information from the profile form.
+    // Backend mapping:
+    // PATCH /profile with the updated fields below.
+    // A real backend should validate sensitive fields such as age, phone number,
+    // email, emergency contact, and accessibility needs before saving.
     state.profile.fullName = document.querySelector("#profile-full-name")?.value ?? state.profile.fullName;
     state.profile.preferredName = document.querySelector("#profile-preferred-name")?.value ?? state.profile.preferredName;
     state.profile.age = document.querySelector("#profile-age")?.value ?? state.profile.age;
@@ -1051,6 +1296,9 @@ function handleAction(action) {
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
     state.profileJustSaved = true;
     renderProfile();
+    // Temporary success feedback for the prototype. With a backend this should
+    // appear after the API request succeeds, and an error message should be shown
+    // if the save request fails.
     setTimeout(() => {
       state.profileJustSaved = false;
       if (route === "profile") renderProfile();
@@ -1058,5 +1306,9 @@ function handleAction(action) {
   }
 }
 
-pet.addEventListener("click", () => setRoute("ai"));
+// Floating companion shortcut: opens the AI Companion page. This is navigation
+// only; the current AI page is static and does not call an external AI/backend.
+
+// Initial render after data.js has populated window.appData.
 render();
+loadDatabaseActivities();
