@@ -441,7 +441,9 @@ async function handleDiscoveryPlaces(req, res, searchParams) {
     return;
   }
 
-  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 100);
+  // Cap raised from 100 to 250 so the frontend map can request every Tier 1
+  // discovery place (115 rows as of the current dataset) in one call.
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 250);
 
   try {
     const result = await db.query(
@@ -485,7 +487,8 @@ async function handleNearbyPlaces(req, res, searchParams) {
 
   const lat = Number(searchParams.get("lat"));
   const lng = Number(searchParams.get("lng"));
-  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 100);
+  // Cap raised from 100 to 250 for the same reason as handleDiscoveryPlaces above.
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 250);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     sendJson(res, 400, { error: "Expected numeric lat and lng query parameters." });

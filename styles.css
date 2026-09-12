@@ -944,6 +944,44 @@ textarea {
   margin-bottom: 28px;
 }
 
+.view-toggle {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.map-panel {
+  margin-bottom: 30px;
+}
+
+.activity-map {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.map-caption {
+  margin: 10px 2px 0;
+}
+
+.map-popup {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.map-popup strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+}
+
+.map-popup .save-btn {
+  justify-self: start;
+}
+
 .social-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

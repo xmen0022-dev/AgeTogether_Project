@@ -6,6 +6,9 @@ const nav = [...document.querySelectorAll(".top-nav button")];
 // multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
+let activityView = "list"; // "list" or "map" - only affects the Activities tab
+let activityMap = null; // Leaflet map instance, recreated on every render since
+// app.innerHTML replaces the DOM node the previous map instance was bound to.
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
 // pet.js reads this shared object when it creates localised speech or tips.
@@ -42,6 +45,12 @@ let activitiesError = "";
 function setRoute(nextRoute) {
   // Change the active screen and re-render the app from the current state.
   // In a full app this would usually be handled by a router library.
+  // Tear down the Leaflet map first if we're leaving Social - its container
+  // is about to be destroyed by the next app.innerHTML assignment.
+  if (nextRoute !== "social" && activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
   route = nextRoute;
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
@@ -110,6 +119,8 @@ function mapDiscoveryPlace(place) {
     source: "database",
     licence: place.licence,
     officialUrl: place.official_url,
+    lat: Number(place.latitude),
+    lng: Number(place.longitude),
   };
 }
 
@@ -119,7 +130,10 @@ async function loadDatabaseActivities() {
   if (route === "social") renderSocial();
 
   try {
-    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=24");
+    // limit=200 comfortably covers all Tier 1 discovery places currently in
+    // the database (115) so the Activities map shows everything, not just
+    // the closest handful. The server still enforces its own hard cap.
+    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=200");
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
@@ -470,6 +484,17 @@ function renderSocial() {
       ${content}
     </section>
   `;
+
+  // The map only exists inside the Activities tab. It has to be (re)built
+  // after the HTML above is in the DOM, because Leaflet needs a real
+  // container element to attach to, and app.innerHTML just replaced it.
+  if (socialTab === "activities" && activityView === "map") {
+    const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
+    initActivityMap(filtered);
+  } else if (activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
 }
 
 function activityFilters() {
@@ -495,6 +520,22 @@ function renderActivities() {
     <div class="chips filter-row">
       ${activityFilters().map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
     </div>
+    <div class="view-toggle">
+      <button class="tab ${activityView === "list" ? "active" : ""}" data-activity-view="list">&#x1F4CB; List view</button>
+      <button class="tab ${activityView === "map" ? "active" : ""}" data-activity-view="map">&#x1F5FA; Map view</button>
+    </div>
+    ${
+      activityView === "map"
+        ? `
+      <section class="map-panel">
+        <div id="activity-map" class="activity-map"></div>
+        <p class="muted small map-caption">
+          ${filtered.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng)).length} of ${filtered.length} activities shown on the map &middot; tap a pin for details
+        </p>
+      </section>
+    `
+        : ""
+    }
     <section class="social-grid">
       ${
         filtered.length
@@ -530,6 +571,49 @@ function activity(a) {
       }</button>
     </article>
   `;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function initActivityMap(activities) {
+  // Builds (or rebuilds) the Leaflet map for the Activities > Map view.
+  // Called after app.innerHTML has been set, so #activity-map exists in the DOM.
+  const container = document.querySelector("#activity-map");
+  if (!container || typeof L === "undefined") return;
+
+  if (activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
+
+  const withCoords = activities.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng));
+
+  activityMap = L.map(container, { scrollWheelZoom: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(activityMap);
+
+  if (withCoords.length) {
+    withCoords.forEach((a) => {
+      const marker = L.marker([a.lat, a.lng]).addTo(activityMap);
+      marker.bindPopup(`
+        <div class="map-popup">
+          <strong>${escapeHtml(a.title)}</strong>
+          <p class="muted small">${escapeHtml(a.category || "")}</p>
+          <p class="small">${a.date} &middot; ${a.price}</p>
+          <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
+        </div>
+      `);
+    });
+    const bounds = L.latLngBounds(withCoords.map((a) => [a.lat, a.lng]));
+    activityMap.fitBounds(bounds.pad(0.25));
+  } else {
+    // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
+    activityMap.setView([-37.8136, 144.9631], 12);
+  }
 }
 
 function renderNews() {
@@ -973,6 +1057,14 @@ document.addEventListener("click", (event) => {
   const activityFilter = event.target.closest("[data-activity-filter]");
   if (activityFilter) {
     state.activityFilter = activityFilter.dataset.activityFilter;
+    renderSocial();
+    return;
+  }
+
+  // Switch the Activities tab between the card list and the Leaflet map.
+  const activityViewTarget = event.target.closest("[data-activity-view]");
+  if (activityViewTarget) {
+    activityView = activityViewTarget.dataset.activityView;
     renderSocial();
     return;
   }
