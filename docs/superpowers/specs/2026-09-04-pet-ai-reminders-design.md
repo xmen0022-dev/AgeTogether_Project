@@ -10,7 +10,7 @@ Pet clicks, and surface three user-configurable daily reminders.
 
 - Keep the feature client-side. Do not add database tables, accounts, or a new
   provider call for health tips or reminders.
-- Use the existing AI language preference (`en-AU`, `zh-CN`, `zh-TW`).
+- Use the existing AI language preference (`en-AU`, `SC`, `TC`).
 - Pet speech is deliberately concise: at most ten whitespace-separated words
   for model replies, with safe client-side truncation as a final guard.
 - Health tips are general wellbeing prompts, not diagnosis or treatment.

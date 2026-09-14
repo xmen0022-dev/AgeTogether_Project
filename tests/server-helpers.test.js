@@ -11,14 +11,14 @@ test("falls back when language or style is unsupported", () => {
 });
 
 test("builds a prompt with language and simple-reading instructions", () => {
-  const prompt = buildSystemPrompt("ask", "zh-CN", "simple");
+  const prompt = buildSystemPrompt("ask", "SC", "simple");
   assert.match(prompt, /简体中文/);
   assert.match(prompt, /short sentences|短句/i);
   assert.match(prompt, /Answer the user's question|回答用户的问题/);
 });
 
 test("builds expressive Traditional Chinese instructions without removing safety rules", () => {
-  const prompt = buildSystemPrompt("scam-check", "zh-TW", "expressive");
+  const prompt = buildSystemPrompt("scam-check", "TC", "expressive");
   assert.match(prompt, /繁體中文/);
   assert.match(prompt, /gentle imagery|溫和的比喻/i);
   assert.match(prompt, /Never give medical|不得提供醫療/i);

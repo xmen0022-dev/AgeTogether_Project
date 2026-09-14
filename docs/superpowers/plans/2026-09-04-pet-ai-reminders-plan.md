@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Keep the feature client-side; do not add database tables, accounts, or provider calls for tips/reminders.
-- Use `en-AU`, `zh-CN`, and `zh-TW`; invalid values fall back to `en-AU`.
+- Use `en-AU`, `SC`, and `TC`; invalid values fall back to `en-AU`.
 - Pet speech is at most ten whitespace-separated words and is inserted as text.
 - Medication copy must not change a user's prescribed dose or treatment plan.
 - Reminders operate in browser local time and only while the page is open.
@@ -36,7 +36,7 @@ test("limits Pet speech to the requested word count", () => {
 
 test("returns a localised tip only on every tenth click", () => {
   assert.equal(nextHealthTip(9, 0, "en-AU"), null);
-  const tip = nextHealthTip(10, 0, "zh-CN");
+  const tip = nextHealthTip(10, 0, "SC");
   assert.equal(tip.category, "mental");
   assert.match(tip.text, /休息|心情|朋友/);
 });

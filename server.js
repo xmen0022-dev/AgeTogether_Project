@@ -131,8 +131,8 @@ const TASKS = {
 
 const LANGUAGES = {
   "en-AU": "Reply in Australian English using Australian spelling.",
-  "zh-CN": "Reply in Simplified Chinese (简体中文). Do not mix in unnecessary English.",
-  "zh-TW": "Reply in Traditional Chinese (繁體中文). Do not mix Simplified Chinese characters into the answer.",
+  "SC": "Reply in Simplified Chinese (简体中文). Do not mix in unnecessary English.",
+  "TC": "Reply in Traditional Chinese (繁體中文). Do not mix Simplified Chinese characters into the answer.",
 };
 
 const STYLES = {

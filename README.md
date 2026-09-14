@@ -31,7 +31,7 @@ Proxies one request to the DeepSeek API so the key stays on the server. The prom
 `server.js`, not in the browser, so the endpoint accepts a named task rather than free-form
 instructions. Body: `{ "task": "<name>", "input": "<text>", "language": "en-AU", "style": "simple" }`.
 
-Supported languages are `en-AU`, `zh-CN`, and `zh-TW`. Supported styles are `simple`,
+Supported languages are `en-AU`, `SC`, and `TC`. Supported styles are `simple`,
 `standard`, and `expressive`. Safety rules always override language and style preferences.
 
 | Task | Purpose |

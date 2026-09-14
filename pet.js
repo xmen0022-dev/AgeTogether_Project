@@ -92,11 +92,11 @@ const HEALTH_TIPS = {
     mental: ["A quiet breath can settle a busy mind.", "A kind chat can brighten your day."],
     physical: ["Sip some water and stretch gently.", "A short walk can help your body."],
   },
-  "zh-CN": {
+  "SC": {
     mental: ["慢慢呼吸，让心情平静。", "和亲友聊聊天，心情会更好。"],
     physical: ["喝点水，轻轻伸展身体。", "安全地走一小会儿，有益身体。"],
   },
-  "zh-TW": {
+  "TC": {
     mental: ["慢慢呼吸，讓心情平靜。", "和親友聊聊天，心情會更好。"],
     physical: ["喝點水，輕輕伸展身體。", "安全地走一小會兒，有益身體。"],
   },
@@ -459,12 +459,12 @@ const REMINDER_COPY = {
     medication: "Please follow your usual medicine plan.",
     movement: "Gentle movement time, if it feels safe.",
   },
-  "zh-CN": {
+  "SC": {
     water: "该喝点水啦。",
     medication: "请按平时的用药计划进行。",
     movement: "如果安全，可以轻轻活动一下。",
   },
-  "zh-TW": {
+  "TC": {
     water: "該喝點水啦。",
     medication: "請按平時的用藥計畫進行。",
     movement: "如果安全，可以輕輕活動一下。",

@@ -20,7 +20,7 @@ The server remains the trust boundary. The browser sends a named task, user inpu
 
 Safety rules always have priority over style preferences. The server must continue to reject unknown tasks and empty input, preserve prompt-injection protection for pasted messages, and preserve the existing medical, legal, financial, password, and scam-link restrictions. Language and style may change wording only, never safety boundaries.
 
-Defaults are `en-AU` and `simple`. The user may select `en-AU`, `zh-CN`, or `zh-TW`, and `simple`, `standard`, or `expressive`. The expressive style may use gentle imagery, but remains concise, concrete, and suitable for older readers.
+Defaults are `en-AU` and `simple`. The user may select `en-AU`, `SC`, or `TC`, and `simple`, `standard`, or `expressive`. The expressive style may use gentle imagery, but remains concise, concrete, and suitable for older readers.
 
 ## API contract
 

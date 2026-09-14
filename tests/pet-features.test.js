@@ -17,7 +17,7 @@ test("limits Pet speech to the requested word count", () => {
 
 test("returns a localised tip only on every tenth click", () => {
   assert.equal(nextHealthTip(9, 0, "en-AU"), null);
-  const tip = nextHealthTip(10, 0, "zh-CN");
+  const tip = nextHealthTip(10, 0, "SC");
   assert.equal(tip.category, "mental");
   assert.match(tip.text, /休息|心情|朋友/);
 });

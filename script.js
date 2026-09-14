@@ -333,7 +333,7 @@ function renderFamily() {
         <div class="panel">
           <h2>Add a family note</h2>
           <div class="chips note-picker">
-            ${state.familyMembers.map((m) => `<button class="pill ${m.id === state.familyNotePickId ? "active" : ""}" data-pick-family-member="${m.id}">${m.name}</button>`).join("")}
+            ${state.familyMembers.map((m) => `<button class="pill ${m.id === state.familyNotePickId ? "active" : ""}" data-pick-family-member="${m.id}">${escapeHtml(m.name)}</button>`).join("")}
           </div>
           <textarea id="family-note-input" placeholder="Write a reminder or note for the family board..."></textarea>
           <p class="align-right"><button class="blue-btn" data-action="add-family-note">+ Add Family Note</button></p>
@@ -358,7 +358,7 @@ function familyFilterChip(member) {
   const active = state.familyFilterId === member.id;
   return `
     <button class="pill ${active ? "active" : ""} ${member.color}-pill" data-family-filter="${member.id}">
-      <span class="mini-avatar ${member.color}">${member.initial}</span>${member.name}<span class="dot">&middot;</span><span class="muted">${member.rel}</span>
+      <span class="mini-avatar ${member.color}">${escapeHtml(member.initial)}</span>${escapeHtml(member.name)}<span class="dot">&middot;</span><span class="muted">${escapeHtml(member.rel)}</span>
     </button>
   `;
 }
@@ -372,14 +372,14 @@ function familyNoteCard(n) {
   const displayName = isMe ? "Me" : member.name;
   const displayInitial = isMe ? "M" : member.initial;
   const displayColor = isMe ? "green" : member.color;
-  const relation = !isMe && member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
+  const relation = !isMe && member.rel ? `<span class="muted"> &middot; ${escapeHtml(member.rel)}</span>` : "";
   return `
     <article class="note ${member.color} ${n.done ? "done" : ""}">
       <div class="note-head">
-        <strong><span class="mini-avatar ${displayColor}">${displayInitial}</span>${displayName}${relation}</strong>
-        <span>${n.date}</span>
+        <strong><span class="mini-avatar ${displayColor}">${escapeHtml(displayInitial)}</span>${escapeHtml(displayName)}${relation}</strong>
+        <span>${escapeHtml(n.date)}</span>
       </div>
-      <p>${n.text}</p>
+      <p>${escapeHtml(n.text)}</p>
       <button class="note-action" data-toggle-family-note="${n.id}">${n.done ? "&#x2713; Done" : "&#x25EF; Tap to mark done"}</button>
     </article>
   `;
@@ -418,8 +418,8 @@ function familyMemberRow(m) {
   // `muted` only changes the local prototype state at the moment.
   return `
     <article class="member ${m.muted ? "muted" : ""}">
-      <span class="avatar ${m.color}">${m.initial}</span>
-      <span><h3>${m.name} <span class="muted">&middot; ${m.rel}</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${m.contact}</p></span>
+      <span class="avatar ${m.color}">${escapeHtml(m.initial)}</span>
+      <span><h3>${escapeHtml(m.name)} <span class="muted">&middot; ${escapeHtml(m.rel)}</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${escapeHtml(m.contact)}</p></span>
       <button class="ghost" data-mute-family="${m.id}">&#x1F507; ${m.muted ? "Unmute" : "Mute messages"}</button>
       <button class="danger" data-remove-family="${m.id}">Remove</button>
     </article>
@@ -455,10 +455,10 @@ function renderFriends() {
       <section class="board">
         <div class="board-title">
           <div class="title-row">
-            <span class="avatar ${friend.color}">${friend.initial}</span>
-            <span><h2>Shared board with ${friend.name}</h2><p class="muted">A quiet place to leave notes for each other - read them whenever you like.</p></span>
+            <span class="avatar ${friend.color}">${escapeHtml(friend.initial)}</span>
+            <span><h2>Shared board with ${escapeHtml(friend.name)}</h2><p class="muted">A quiet place to leave notes for each other - read them whenever you like.</p></span>
           </div>
-          <p class="muted privacy-copy">&#x1F512; Private board<br />Only you and ${friend.name} can see this</p>
+          <p class="muted privacy-copy">&#x1F512; Private board<br />Only you and ${escapeHtml(friend.name)} can see this</p>
         </div>
         <div class="note-area friend-note-area">
           ${
@@ -470,10 +470,10 @@ function renderFriends() {
         <div class="message-panel">
           <h2>Leave a message on the board...</h2>
           <div class="message-form">
-            <textarea id="friend-note-input" placeholder="Write something for ${friend.name} to read when they visit..."></textarea>
+            <textarea id="friend-note-input" placeholder="Write something for ${escapeHtml(friend.name)} to read when they visit..."></textarea>
             <button class="primary" data-action="post-friend-note">Post Message</button>
           </div>
-          <p class="muted small">Your message will appear on the shared board. ${friend.name} will see it the next time they visit.</p>
+          <p class="muted small">Your message will appear on the shared board. ${escapeHtml(friend.name)} will see it the next time they visit.</p>
         </div>
       </section>
       `
@@ -490,8 +490,8 @@ function friendPick(friend) {
   const noteCount = (state.friendNotes[friend.id] || []).length;
   return `
     <button class="friend-pick ${active ? "active" : ""}" data-select-friend="${friend.id}">
-      <span class="avatar ${friend.color}">${friend.initial}</span>
-      <span><h3>${friend.name}</h3><p class="muted">${noteCount} note${noteCount === 1 ? "" : "s"} on board</p></span>
+      <span class="avatar ${friend.color}">${escapeHtml(friend.initial)}</span>
+      <span><h3>${escapeHtml(friend.name)}</h3><p class="muted">${noteCount} note${noteCount === 1 ? "" : "s"} on board</p></span>
       <span class="status-dot"></span>
     </button>
   `;
@@ -506,10 +506,10 @@ function friendNoteCard(n, friend) {
   return `
     <article class="note ${n.color} ${n.liked ? "done" : ""}">
       <div class="note-head">
-        <strong><span class="mini-avatar ${n.color}">${initial}</span>${name}</strong>
-        <span>${n.date}</span>
+        <strong><span class="mini-avatar ${n.color}">${escapeHtml(initial)}</span>${escapeHtml(name)}</strong>
+        <span>${escapeHtml(n.date)}</span>
       </div>
-      <p>${n.text}</p>
+      <p>${escapeHtml(n.text)}</p>
       <button class="note-action" data-toggle-friend-like="${n.id}">${n.liked ? "&#x2764;&#xFE0F; Liked" : "&#x1F90D; Like"}</button>
     </article>
   `;
@@ -548,8 +548,8 @@ function friendMemberRow(f) {
   // View, mute, and remove buttons are wired through data attributes.
   return `
     <article class="member ${f.muted ? "muted" : ""}">
-      <span class="avatar ${f.color}">${f.initial}</span>
-      <span><h3>${f.name} <span class="muted">&middot; Friend</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${f.contact}</p></span>
+      <span class="avatar ${f.color}">${escapeHtml(f.initial)}</span>
+      <span><h3>${escapeHtml(f.name)} <span class="muted">&middot; Friend</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${escapeHtml(f.contact)}</p></span>
       <button class="ghost" data-route="friends">View Board</button>
       <button class="ghost" data-mute-friend="${f.id}">&#x1F507; ${f.muted ? "Unmute" : "Mute"}</button>
       <button class="danger" data-remove-friend="${f.id}">Remove</button>
@@ -651,14 +651,14 @@ function activity(a) {
   return `
     <article class="activity-card">
       <div class="card-top">
-        <span class="activity-icon">${a.icon}</span>
-        <h3>${a.title}</h3>
+        <span class="activity-icon">${escapeHtml(a.icon)}</span>
+        <h3>${escapeHtml(a.title)}</h3>
         <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
       </div>
-      <p class="muted">&#x1F4CD; ${a.location}</p>
-      <p><span class="small-badge blue-badge">&#x1F5D3; ${a.date}</span> <span class="small-badge">${a.price}</span></p>
-      <p>${a.copy}</p>
-      <p class="muted small">&#x267F; ${a.access}<br />&#x1F3E2; ${a.organiser}</p>
+      <p class="muted">&#x1F4CD; ${escapeHtml(a.location)}</p>
+      <p><span class="small-badge blue-badge">&#x1F5D3; ${escapeHtml(a.date)}</span> <span class="small-badge">${escapeHtml(a.price)}</span></p>
+      <p>${escapeHtml(a.copy)}</p>
+      <p class="muted small">&#x267F; ${escapeHtml(a.access)}<br />&#x1F3E2; ${escapeHtml(a.organiser)}</p>
       <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${
         a.source === "database"
           ? a.joined
@@ -702,7 +702,7 @@ function initActivityMap(activities) {
         <div class="map-popup">
           <strong>${escapeHtml(a.title)}</strong>
           <p class="muted small">${escapeHtml(a.category || "")}</p>
-          <p class="small">${a.date} &middot; ${a.price}</p>
+          <p class="small">${escapeHtml(a.date)} &middot; ${escapeHtml(a.price)}</p>
           <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
         </div>
       `);
@@ -731,13 +731,13 @@ function news(n) {
   return `
     <article class="news-card">
       <div class="card-top">
-        <span class="activity-icon">${n.icon}</span>
-        <span class="small-badge blue-badge">${n.tag}</span>
+        <span class="activity-icon">${escapeHtml(n.icon)}</span>
+        <span class="small-badge blue-badge">${escapeHtml(n.tag)}</span>
         <button class="save-btn ${n.saved ? "saved" : ""}" data-save-news="${n.id}">&#x1F516; ${n.saved ? "Saved" : "Save"}</button>
       </div>
-      <h3>${n.title}</h3>
-      <p>${n.copy}</p>
-      <p class="muted small">Source: ${n.source}</p>
+      <h3>${escapeHtml(n.title)}</h3>
+      <p>${escapeHtml(n.copy)}</p>
+      <p class="muted small">Source: ${escapeHtml(n.source)}</p>
     </article>
   `;
 }
@@ -825,7 +825,7 @@ function renderProfile() {
 
 function profileField(id, label, value) {
   // Reusable input field. The id naming is used later when saving profile data.
-  return `<div class="field"><label>${label}</label><input id="profile-${id}" value="${value}" /></div>`;
+  return `<div class="field"><label>${escapeHtml(label)}</label><input id="profile-${id}" value="${escapeHtml(value)}" /></div>`;
 }
 
 function toggle(t) {
@@ -833,7 +833,7 @@ function toggle(t) {
   return `
     <article class="toggle-row ${t.on ? "on" : ""}" data-toggle-key="${t.key}">
       <span class="switch"></span>
-      <span><strong>${t.title}</strong><br /><span class="muted">${t.copy}</span></span>
+      <span><strong>${escapeHtml(t.title)}</strong><br /><span class="muted">${escapeHtml(t.copy)}</span></span>
       <strong>${t.on ? "On" : "Off"}</strong>
     </article>
   `;
@@ -901,8 +901,8 @@ function renderAI() {
               <label for="ai-language">Language</label>
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
-                <option value="zh-CN" ${aiPreferences.language === "zh-CN" ? "selected" : ""}>简体中文</option>
-                <option value="zh-TW" ${aiPreferences.language === "zh-TW" ? "selected" : ""}>繁體中文</option>
+                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>简体中文</option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>繁體中文</option>
               </select>
             </div>
             <div class="field">
