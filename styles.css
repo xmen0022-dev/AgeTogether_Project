@@ -496,6 +496,20 @@ h3 {
   align-items: flex-end;
 }
 
+.family-toolbar .chips,
+.friends-toolbar .chips {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.family-toolbar .outline-btn,
+.friends-toolbar .outline-btn {
+  flex: 0 0 auto;
+  max-width: 210px;
+  white-space: normal;
+  line-height: 1.25;
+}
+
 .tabs,
 .chips {
   display: flex;
@@ -522,7 +536,12 @@ h3 {
 .pill {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
+  height: auto;
+  padding-block: 10px;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .pill.active,
@@ -681,7 +700,7 @@ h3 {
 .note-area {
   min-height: 442px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   align-content: start;
   gap: 26px;
   padding: 36px 40px;
@@ -693,8 +712,13 @@ h3 {
 }
 
 .friend-note-area {
-  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   background-color: #fffdf8;
+}
+
+body.text-size-4 .note-area,
+body.text-size-5 .note-area {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
 }
 
 .note {
@@ -749,6 +773,8 @@ h3 {
 
 .note-head {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
@@ -759,14 +785,18 @@ h3 {
 .note-head strong {
   display: inline-flex;
   align-items: center;
+  flex: 1 1 160px;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--ink);
+  min-width: 0;
 }
 
 .note p {
   margin-bottom: 18px;
   font-size: 1.06em;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .note-action {
