@@ -11,6 +11,7 @@ let activityMap = null; // Leaflet map instance, recreated on every render since
 // app.innerHTML replaces the DOM node the previous map instance was bound to.
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
+let textSizeLevel = 3;
 // pet.js reads this shared object when it creates localised speech or tips.
 // pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
 window.aiPreferences = aiPreferences;
@@ -42,6 +43,7 @@ const notificationSeen = {
   friends: 0,
   social: 0,
 };
+applyTextSize();
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -94,6 +96,11 @@ function nextColor(existingCount) {
   // Gives newly added people a rotating colour so generated cards still match
   // the existing visual system.
   return COLORS[existingCount % COLORS.length];
+}
+
+function applyTextSize() {
+  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
+  document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
 function activityIcon(category) {
@@ -728,6 +735,14 @@ function renderProfile() {
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
       <section class="panel profile-panel">
+        <h2>Text size</h2>
+        <div class="text-size-picker" aria-label="Text size">
+          ${[1, 2, 3, 4, 5]
+            .map((level) => `<button class="text-size-btn ${textSizeLevel === level ? "active" : ""}" data-text-size="${level}">A${level}</button>`)
+            .join("")}
+        </div>
+      </section>
+      <section class="panel profile-panel">
         <div class="title-row">
           <span class="avatar peach">${(p.preferredName || "?").charAt(0).toUpperCase()}</span>
           <span><h2>Personal Information</h2><p class="muted">Only you can see this unless you choose to share it.</p></span>
@@ -1161,6 +1176,14 @@ document.addEventListener("click", (event) => {
     const key = toggleRow.dataset.toggleKey;
     const toggleItem = state.profileToggles.find((t) => t.key === key);
     if (toggleItem) toggleItem.on = !toggleItem.on;
+    renderProfile();
+    return;
+  }
+
+  const textSizeTarget = event.target.closest("[data-text-size]");
+  if (textSizeTarget) {
+    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    applyTextSize();
     renderProfile();
     return;
   }

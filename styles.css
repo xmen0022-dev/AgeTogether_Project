@@ -33,6 +33,26 @@ body {
   line-height: 1.55;
 }
 
+body.text-size-1 {
+  font-size: 14px;
+}
+
+body.text-size-2 {
+  font-size: 15px;
+}
+
+body.text-size-3 {
+  font-size: 16px;
+}
+
+body.text-size-4 {
+  font-size: 18px;
+}
+
+body.text-size-5 {
+  font-size: 20px;
+}
+
 button,
 input,
 textarea {
@@ -621,7 +641,7 @@ h3 {
 
 .privacy-copy {
   text-align: right;
-  font-size: 13px;
+  font-size: 0.82em;
 }
 
 .note-area {
@@ -699,7 +719,7 @@ h3 {
   gap: 12px;
   margin-bottom: 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.82em;
 }
 
 .note-head strong {
@@ -711,7 +731,7 @@ h3 {
 
 .note p {
   margin-bottom: 18px;
-  font-size: 17px;
+  font-size: 1.06em;
   line-height: 1.45;
 }
 
@@ -723,7 +743,7 @@ h3 {
   padding: 0;
   color: var(--muted);
   background: none;
-  font-size: 13px;
+  font-size: 0.82em;
   cursor: pointer;
 }
 
@@ -1098,6 +1118,29 @@ textarea {
 
 .profile-grid {
   margin-top: 26px;
+}
+
+.text-size-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.text-size-btn {
+  min-width: 64px;
+  min-height: 48px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: white;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.text-size-btn.active {
+  border-color: var(--green);
+  color: #235f3b;
+  background: var(--green-soft);
 }
 
 .toggle-list {
