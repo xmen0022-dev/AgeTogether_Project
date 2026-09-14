@@ -37,6 +37,11 @@ const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
+const notificationSeen = {
+  family: 0,
+  friends: 0,
+  social: 0,
+};
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -52,6 +57,7 @@ function setRoute(nextRoute) {
     activityMap = null;
   }
   route = nextRoute;
+  markNotificationsSeen(nextRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
@@ -98,6 +104,41 @@ function activityIcon(category) {
   if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
   if (value.includes("community")) return "&#x1F91D;";
   return "&#x1F4CD;";
+}
+
+function notificationCounts() {
+  return {
+    family: state.familyNotes.filter((note) => !note.done).length,
+    friends: Object.values(state.friendNotes)
+      .flat()
+      .filter((note) => note.author === "friend").length,
+    social: Math.min(2, state.activities.length),
+  };
+}
+
+function markNotificationsSeen(routeName) {
+  const counts = notificationCounts();
+  if (routeName === "family" || routeName === "manage-family") notificationSeen.family = counts.family;
+  if (routeName === "friends" || routeName === "manage-friends") notificationSeen.friends = counts.friends;
+  if (routeName === "social") notificationSeen.social = counts.social;
+}
+
+function homeNotifications() {
+  const counts = notificationCounts();
+  return [
+    { key: "family", label: "Family", route: "family" },
+    { key: "friends", label: "Friend", route: "friends" },
+    { key: "social", label: "Social", route: "social" },
+  ]
+    .filter((item) => counts[item.key] > notificationSeen[item.key])
+    .map((item) => {
+      return `
+        <button class="home-notification has-update" data-route="${item.route}" aria-label="${item.label} has new updates">
+          <span>${item.label}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function mapDiscoveryPlace(place) {
@@ -158,8 +199,10 @@ async function loadDatabaseActivities() {
 function renderHome() {
   // Landing page: explains the purpose of the service and gives simple entry
   // points into the main tools.
+  const notifications = homeNotifications();
   app.innerHTML = `
     <section class="home-wrap">
+      ${notifications ? `<section class="home-notifications" aria-label="Notifications">${notifications}</section>` : ""}
       <section class="home-hero">
         <div class="hero-copy">
           <span class="home-kicker">Support for healthy ageing</span>

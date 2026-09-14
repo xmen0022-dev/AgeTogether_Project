@@ -178,6 +178,43 @@ h3 {
   padding: 34px 0 70px;
 }
 
+.home-notifications {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.home-notification {
+  min-height: 40px;
+  position: relative;
+  border: 1px solid #d8cdbf;
+  border-radius: 8px;
+  padding: 0 18px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.88);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--soft-shadow);
+}
+
+.home-notification.has-update::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border-radius: 999px;
+  background: #d93c3c;
+  box-shadow: 0 0 0 2px white;
+}
+
+.home-notification:hover {
+  border-color: var(--green);
+  transform: translateY(-1px);
+}
+
 .home-hero {
   min-height: 500px;
   display: grid;
@@ -1467,6 +1504,12 @@ textarea {
 
   .home-wrap {
     padding: 24px 0 54px;
+  }
+
+  .home-notifications {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .page-head {
