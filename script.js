@@ -6,8 +6,13 @@ const nav = [...document.querySelectorAll(".top-nav button")];
 // multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
+let activityView = "list"; // "list" or "map" - only affects the Activities tab
+let activityMap = null; // Leaflet map instance, recreated on every render since
+// app.innerHTML replaces the DOM node the previous map instance was bound to.
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
+let textSizeLevel = 3;
+let userMode = localStorage.getItem("agetogether-user-mode") || "older";
 // pet.js reads this shared object when it creates localised speech or tips.
 // pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
 window.aiPreferences = aiPreferences;
@@ -34,6 +39,12 @@ const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
+const notificationSeen = {
+  family: 0,
+  friends: 0,
+  social: 0,
+};
+applyTextSize();
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -42,17 +53,29 @@ let activitiesError = "";
 function setRoute(nextRoute) {
   // Change the active screen and re-render the app from the current state.
   // In a full app this would usually be handled by a router library.
-  route = nextRoute;
+  const targetRoute = canAccessRoute(nextRoute) ? nextRoute : "family";
+  // Tear down the Leaflet map first if we're leaving Social - its container
+  // is about to be destroyed by the next app.innerHTML assignment.
+  if (targetRoute !== "social" && activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
+  route = targetRoute;
+  markNotificationsSeen(targetRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
 
-function activeRoute() {
+function parentRoute(routeName) {
   // Management pages still belong to their parent navigation items, so the
   // bottom navigation highlights Family/Friends instead of adding extra tabs.
-  if (route === "manage-family") return "family";
-  if (route === "manage-friends") return "friends";
-  return route;
+  if (routeName === "manage-family") return "family";
+  if (routeName === "manage-friends") return "friends";
+  return routeName;
+}
+
+function activeRoute() {
+  return parentRoute(route);
 }
 
 function pageHead(title, subtitle) {
@@ -81,6 +104,42 @@ function nextColor(existingCount) {
   return COLORS[existingCount % COLORS.length];
 }
 
+function applyTextSize() {
+  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
+  document.body.classList.add(`text-size-${textSizeLevel}`);
+}
+
+function allowedRoutes() {
+  if (userMode === "supporter") return new Set(["home", "family", "manage-family", "profile"]);
+  return new Set(["home", "family", "manage-family", "friends", "manage-friends", "social", "profile", "ai"]);
+}
+
+function canAccessRoute(routeName) {
+  return allowedRoutes().has(routeName);
+}
+
+function setUserMode(nextMode) {
+  userMode = nextMode === "supporter" ? "supporter" : "older";
+  localStorage.setItem("agetogether-user-mode", userMode);
+  if (!canAccessRoute(route)) route = "family";
+  render();
+}
+
+function roleSwitcher() {
+  return `
+    <section class="role-entry" aria-label="Choose experience">
+      <button class="${userMode === "older" ? "active" : ""}" data-user-mode="older">
+        <strong>Older adult</strong>
+        <span>Full app</span>
+      </button>
+      <button class="${userMode === "supporter" ? "active" : ""}" data-user-mode="supporter">
+        <strong>Family / supporter</strong>
+        <span>Family only</span>
+      </button>
+    </section>
+  `;
+}
+
 function activityIcon(category) {
   const value = `${category || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
@@ -89,6 +148,42 @@ function activityIcon(category) {
   if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
   if (value.includes("community")) return "&#x1F91D;";
   return "&#x1F4CD;";
+}
+
+function notificationCounts() {
+  return {
+    family: state.familyNotes.filter((note) => !note.done).length,
+    friends: Object.values(state.friendNotes)
+      .flat()
+      .filter((note) => note.author === "friend").length,
+    social: Math.min(2, state.activities.length),
+  };
+}
+
+function markNotificationsSeen(routeName) {
+  const counts = notificationCounts();
+  if (routeName === "family" || routeName === "manage-family") notificationSeen.family = counts.family;
+  if (routeName === "friends" || routeName === "manage-friends") notificationSeen.friends = counts.friends;
+  if (routeName === "social") notificationSeen.social = counts.social;
+}
+
+function homeNotifications() {
+  const counts = notificationCounts();
+  return [
+    { key: "family", label: "Family", route: "family" },
+    { key: "friends", label: "Friend", route: "friends" },
+    { key: "social", label: "Social", route: "social" },
+  ]
+    .filter((item) => canAccessRoute(item.route))
+    .filter((item) => counts[item.key] > notificationSeen[item.key])
+    .map((item) => {
+      return `
+        <button class="home-notification has-update" data-route="${item.route}" aria-label="${item.label} has new updates">
+          <span>${item.label}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function mapDiscoveryPlace(place) {
@@ -110,6 +205,8 @@ function mapDiscoveryPlace(place) {
     source: "database",
     licence: place.licence,
     officialUrl: place.official_url,
+    lat: Number(place.latitude),
+    lng: Number(place.longitude),
   };
 }
 
@@ -119,7 +216,10 @@ async function loadDatabaseActivities() {
   if (route === "social") renderSocial();
 
   try {
-    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=24");
+    // limit=200 comfortably covers all Tier 1 discovery places currently in
+    // the database (115) so the Activities map shows everything, not just
+    // the closest handful. The server still enforces its own hard cap.
+    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=200");
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
@@ -144,8 +244,16 @@ async function loadDatabaseActivities() {
 function renderHome() {
   // Landing page: explains the purpose of the service and gives simple entry
   // points into the main tools.
+  const notifications = homeNotifications();
+  const cards = [
+    homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members."),
+    homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know."),
+    homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information."),
+  ];
   app.innerHTML = `
     <section class="home-wrap">
+      ${roleSwitcher()}
+      ${notifications ? `<section class="home-notifications" aria-label="Notifications">${notifications}</section>` : ""}
       <section class="home-hero">
         <div class="hero-copy">
           <span class="home-kicker">Support for healthy ageing</span>
@@ -153,7 +261,7 @@ function renderHome() {
           <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
           <div class="hero-actions">
             <button class="get-started" data-route="family">Get Started</button>
-            <button class="outline-btn" data-route="social">Explore Activities</button>
+            ${canAccessRoute("social") ? `<button class="outline-btn" data-route="social">Explore Activities</button>` : ""}
           </div>
         </div>
         <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
@@ -167,9 +275,7 @@ function renderHome() {
           <h2>Choose where to go</h2>
         </div>
         <section class="menu-list">
-          ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members.")}
-          ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know.")}
-          ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information.")}
+          ${cards.filter((card) => canAccessRoute(card.routeName)).map((card) => card.html).join("")}
         </section>
       </section>
     </section>
@@ -178,7 +284,9 @@ function renderHome() {
 
 function homeCard(routeName, className, icon, title, copy) {
   // Small reusable card component for the Home menu.
-  return `
+  return {
+    routeName,
+    html: `
     <button class="menu-card ${className}" data-route="${routeName}">
       <span class="menu-icon">${icon}</span>
       <span>
@@ -187,7 +295,8 @@ function homeCard(routeName, className, icon, title, copy) {
       </span>
       <span class="chevron">&rsaquo;</span>
     </button>
-  `;
+  `,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -259,11 +368,15 @@ function familyNoteCard(n) {
   // data so the UI can show the member name, relationship, colour, and initial.
   const member = getFamilyMember(n.memberId);
   if (!member) return "";
-  const relation = member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
+  const isMe = n.author === "me";
+  const displayName = isMe ? "Me" : member.name;
+  const displayInitial = isMe ? "M" : member.initial;
+  const displayColor = isMe ? "green" : member.color;
+  const relation = !isMe && member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
   return `
     <article class="note ${member.color} ${n.done ? "done" : ""}">
       <div class="note-head">
-        <strong><span class="mini-avatar ${member.color}">${member.initial}</span>${member.name}${relation}</strong>
+        <strong><span class="mini-avatar ${displayColor}">${displayInitial}</span>${displayName}${relation}</strong>
         <span>${n.date}</span>
       </div>
       <p>${n.text}</p>
@@ -470,6 +583,17 @@ function renderSocial() {
       ${content}
     </section>
   `;
+
+  // The map only exists inside the Activities tab. It has to be (re)built
+  // after the HTML above is in the DOM, because Leaflet needs a real
+  // container element to attach to, and app.innerHTML just replaced it.
+  if (socialTab === "activities" && activityView === "map") {
+    const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
+    initActivityMap(filtered);
+  } else if (activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
 }
 
 function activityFilters() {
@@ -495,6 +619,22 @@ function renderActivities() {
     <div class="chips filter-row">
       ${activityFilters().map((f) => `<button class="pill ${state.activityFilter === f ? "active" : ""}" data-activity-filter="${f}">${f}</button>`).join("")}
     </div>
+    <div class="view-toggle">
+      <button class="tab ${activityView === "list" ? "active" : ""}" data-activity-view="list">&#x1F4CB; List view</button>
+      <button class="tab ${activityView === "map" ? "active" : ""}" data-activity-view="map">&#x1F5FA; Map view</button>
+    </div>
+    ${
+      activityView === "map"
+        ? `
+      <section class="map-panel">
+        <div id="activity-map" class="activity-map"></div>
+        <p class="muted small map-caption">
+          ${filtered.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng)).length} of ${filtered.length} activities shown on the map &middot; tap a pin for details
+        </p>
+      </section>
+    `
+        : ""
+    }
     <section class="social-grid">
       ${
         filtered.length
@@ -530,6 +670,49 @@ function activity(a) {
       }</button>
     </article>
   `;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function initActivityMap(activities) {
+  // Builds (or rebuilds) the Leaflet map for the Activities > Map view.
+  // Called after app.innerHTML has been set, so #activity-map exists in the DOM.
+  const container = document.querySelector("#activity-map");
+  if (!container || typeof L === "undefined") return;
+
+  if (activityMap) {
+    activityMap.remove();
+    activityMap = null;
+  }
+
+  const withCoords = activities.filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lng));
+
+  activityMap = L.map(container, { scrollWheelZoom: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(activityMap);
+
+  if (withCoords.length) {
+    withCoords.forEach((a) => {
+      const marker = L.marker([a.lat, a.lng]).addTo(activityMap);
+      marker.bindPopup(`
+        <div class="map-popup">
+          <strong>${escapeHtml(a.title)}</strong>
+          <p class="muted small">${escapeHtml(a.category || "")}</p>
+          <p class="small">${a.date} &middot; ${a.price}</p>
+          <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
+        </div>
+      `);
+    });
+    const bounds = L.latLngBounds(withCoords.map((a) => [a.lat, a.lng]));
+    activityMap.fitBounds(bounds.pad(0.25));
+  } else {
+    // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
+    activityMap.setView([-37.8136, 144.9631], 12);
+  }
 }
 
 function renderNews() {
@@ -600,6 +783,14 @@ function renderProfile() {
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
+      <section class="panel profile-panel">
+        <h2>Text size</h2>
+        <div class="text-size-picker" aria-label="Text size">
+          ${[1, 2, 3, 4, 5]
+            .map((level) => `<button class="text-size-btn ${textSizeLevel === level ? "active" : ""}" data-text-size="${level}">A${level}</button>`)
+            .join("")}
+        </div>
+      </section>
       <section class="panel profile-panel">
         <div class="title-row">
           <span class="avatar peach">${(p.preferredName || "?").charAt(0).toUpperCase()}</span>
@@ -781,8 +972,13 @@ async function askCompanion(task, input) {
 function render() {
   // Central render function. Every route rebuilds the visible UI from the
   // current data state. This is the main data-driven pattern in the prototype.
-  nav.forEach((button) => button.classList.toggle("active", button.dataset.route === activeRoute()));
-  pet.classList.toggle("hidden", !pagesWithPet.has(route));
+  if (!canAccessRoute(route)) route = "family";
+  nav.forEach((button) => {
+    const buttonRoute = button.dataset.route;
+    button.classList.toggle("nav-hidden", !canAccessRoute(buttonRoute));
+    button.classList.toggle("active", buttonRoute === activeRoute());
+  });
+  pet.classList.toggle("hidden", userMode === "supporter" || !pagesWithPet.has(route));
 
   if (route === "home") renderHome();
   if (route === "family") renderFamily();
@@ -802,6 +998,12 @@ document.addEventListener("click", (event) => {
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
+
+  const userModeTarget = event.target.closest("[data-user-mode]");
+  if (userModeTarget) {
+    setUserMode(userModeTarget.dataset.userMode);
+    return;
+  }
 
   // Navigation: any element with data-route changes the active screen. The
   // render functions recreate the visible page from the current state object.
@@ -977,6 +1179,14 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Switch the Activities tab between the card list and the Leaflet map.
+  const activityViewTarget = event.target.closest("[data-activity-view]");
+  if (activityViewTarget) {
+    activityView = activityViewTarget.dataset.activityView;
+    renderSocial();
+    return;
+  }
+
   // Save/unsave a community activity. Backend mapping:
   // POST /saved-items with { type: "activity", id } or
   // DELETE /saved-items/activity/:id.
@@ -1026,6 +1236,14 @@ document.addEventListener("click", (event) => {
     const key = toggleRow.dataset.toggleKey;
     const toggleItem = state.profileToggles.find((t) => t.key === key);
     if (toggleItem) toggleItem.on = !toggleItem.on;
+    renderProfile();
+    return;
+  }
+
+  const textSizeTarget = event.target.closest("[data-text-size]");
+  if (textSizeTarget) {
+    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    applyTextSize();
     renderProfile();
     return;
   }
@@ -1088,6 +1306,7 @@ function handleAction(action) {
     state.familyNotes.unshift({
       id: nextId(),
       memberId: state.familyNotePickId,
+      author: "me",
       text,
       date: "Today",
       done: false,
