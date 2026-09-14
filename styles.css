@@ -151,6 +151,10 @@ h3 {
   background: var(--green-soft);
 }
 
+.top-nav button.nav-hidden {
+  display: none;
+}
+
 .profile-nav {
   border-color: var(--line) !important;
   color: var(--ink) !important;
@@ -196,6 +200,36 @@ h3 {
   width: min(1240px, calc(100vw - 56px));
   margin: 0 auto;
   padding: 34px 0 70px;
+}
+
+.role-entry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.role-entry button {
+  min-height: 72px;
+  display: grid;
+  gap: 4px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 18px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--soft-shadow);
+}
+
+.role-entry button.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.role-entry span {
+  color: var(--muted);
 }
 
 .home-notifications {
@@ -1547,6 +1581,10 @@ textarea {
 
   .home-wrap {
     padding: 24px 0 54px;
+  }
+
+  .role-entry {
+    grid-template-columns: 1fr;
   }
 
   .home-notifications {

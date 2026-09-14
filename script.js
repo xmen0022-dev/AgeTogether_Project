@@ -12,6 +12,7 @@ let activityMap = null; // Leaflet map instance, recreated on every render since
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
 let textSizeLevel = 3;
+let userMode = localStorage.getItem("agetogether-user-mode") || "older";
 // pet.js reads this shared object when it creates localised speech or tips.
 // pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
 window.aiPreferences = aiPreferences;
@@ -52,24 +53,29 @@ applyTextSize();
 function setRoute(nextRoute) {
   // Change the active screen and re-render the app from the current state.
   // In a full app this would usually be handled by a router library.
+  const targetRoute = canAccessRoute(nextRoute) ? nextRoute : "family";
   // Tear down the Leaflet map first if we're leaving Social - its container
   // is about to be destroyed by the next app.innerHTML assignment.
-  if (nextRoute !== "social" && activityMap) {
+  if (targetRoute !== "social" && activityMap) {
     activityMap.remove();
     activityMap = null;
   }
-  route = nextRoute;
-  markNotificationsSeen(nextRoute);
+  route = targetRoute;
+  markNotificationsSeen(targetRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
 
-function activeRoute() {
+function parentRoute(routeName) {
   // Management pages still belong to their parent navigation items, so the
   // bottom navigation highlights Family/Friends instead of adding extra tabs.
-  if (route === "manage-family") return "family";
-  if (route === "manage-friends") return "friends";
-  return route;
+  if (routeName === "manage-family") return "family";
+  if (routeName === "manage-friends") return "friends";
+  return routeName;
+}
+
+function activeRoute() {
+  return parentRoute(route);
 }
 
 function pageHead(title, subtitle) {
@@ -101,6 +107,37 @@ function nextColor(existingCount) {
 function applyTextSize() {
   document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
+}
+
+function allowedRoutes() {
+  if (userMode === "supporter") return new Set(["home", "family", "manage-family", "profile"]);
+  return new Set(["home", "family", "manage-family", "friends", "manage-friends", "social", "profile", "ai"]);
+}
+
+function canAccessRoute(routeName) {
+  return allowedRoutes().has(routeName);
+}
+
+function setUserMode(nextMode) {
+  userMode = nextMode === "supporter" ? "supporter" : "older";
+  localStorage.setItem("agetogether-user-mode", userMode);
+  if (!canAccessRoute(route)) route = "family";
+  render();
+}
+
+function roleSwitcher() {
+  return `
+    <section class="role-entry" aria-label="Choose experience">
+      <button class="${userMode === "older" ? "active" : ""}" data-user-mode="older">
+        <strong>Older adult</strong>
+        <span>Full app</span>
+      </button>
+      <button class="${userMode === "supporter" ? "active" : ""}" data-user-mode="supporter">
+        <strong>Family / supporter</strong>
+        <span>Family only</span>
+      </button>
+    </section>
+  `;
 }
 
 function activityIcon(category) {
@@ -137,6 +174,7 @@ function homeNotifications() {
     { key: "friends", label: "Friend", route: "friends" },
     { key: "social", label: "Social", route: "social" },
   ]
+    .filter((item) => canAccessRoute(item.route))
     .filter((item) => counts[item.key] > notificationSeen[item.key])
     .map((item) => {
       return `
@@ -207,8 +245,14 @@ function renderHome() {
   // Landing page: explains the purpose of the service and gives simple entry
   // points into the main tools.
   const notifications = homeNotifications();
+  const cards = [
+    homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members."),
+    homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know."),
+    homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information."),
+  ];
   app.innerHTML = `
     <section class="home-wrap">
+      ${roleSwitcher()}
       ${notifications ? `<section class="home-notifications" aria-label="Notifications">${notifications}</section>` : ""}
       <section class="home-hero">
         <div class="hero-copy">
@@ -217,7 +261,7 @@ function renderHome() {
           <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
           <div class="hero-actions">
             <button class="get-started" data-route="family">Get Started</button>
-            <button class="outline-btn" data-route="social">Explore Activities</button>
+            ${canAccessRoute("social") ? `<button class="outline-btn" data-route="social">Explore Activities</button>` : ""}
           </div>
         </div>
         <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
@@ -231,9 +275,7 @@ function renderHome() {
           <h2>Choose where to go</h2>
         </div>
         <section class="menu-list">
-          ${homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members.")}
-          ${homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know.")}
-          ${homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information.")}
+          ${cards.filter((card) => canAccessRoute(card.routeName)).map((card) => card.html).join("")}
         </section>
       </section>
     </section>
@@ -242,7 +284,9 @@ function renderHome() {
 
 function homeCard(routeName, className, icon, title, copy) {
   // Small reusable card component for the Home menu.
-  return `
+  return {
+    routeName,
+    html: `
     <button class="menu-card ${className}" data-route="${routeName}">
       <span class="menu-icon">${icon}</span>
       <span>
@@ -251,7 +295,8 @@ function homeCard(routeName, className, icon, title, copy) {
       </span>
       <span class="chevron">&rsaquo;</span>
     </button>
-  `;
+  `,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -323,11 +368,15 @@ function familyNoteCard(n) {
   // data so the UI can show the member name, relationship, colour, and initial.
   const member = getFamilyMember(n.memberId);
   if (!member) return "";
-  const relation = member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
+  const isMe = n.author === "me";
+  const displayName = isMe ? "Me" : member.name;
+  const displayInitial = isMe ? "M" : member.initial;
+  const displayColor = isMe ? "green" : member.color;
+  const relation = !isMe && member.rel ? `<span class="muted"> &middot; ${member.rel}</span>` : "";
   return `
     <article class="note ${member.color} ${n.done ? "done" : ""}">
       <div class="note-head">
-        <strong><span class="mini-avatar ${member.color}">${member.initial}</span>${member.name}${relation}</strong>
+        <strong><span class="mini-avatar ${displayColor}">${displayInitial}</span>${displayName}${relation}</strong>
         <span>${n.date}</span>
       </div>
       <p>${n.text}</p>
@@ -923,8 +972,13 @@ async function askCompanion(task, input) {
 function render() {
   // Central render function. Every route rebuilds the visible UI from the
   // current data state. This is the main data-driven pattern in the prototype.
-  nav.forEach((button) => button.classList.toggle("active", button.dataset.route === activeRoute()));
-  pet.classList.toggle("hidden", !pagesWithPet.has(route));
+  if (!canAccessRoute(route)) route = "family";
+  nav.forEach((button) => {
+    const buttonRoute = button.dataset.route;
+    button.classList.toggle("nav-hidden", !canAccessRoute(buttonRoute));
+    button.classList.toggle("active", buttonRoute === activeRoute());
+  });
+  pet.classList.toggle("hidden", userMode === "supporter" || !pagesWithPet.has(route));
 
   if (route === "home") renderHome();
   if (route === "family") renderFamily();
@@ -944,6 +998,12 @@ document.addEventListener("click", (event) => {
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
+
+  const userModeTarget = event.target.closest("[data-user-mode]");
+  if (userModeTarget) {
+    setUserMode(userModeTarget.dataset.userMode);
+    return;
+  }
 
   // Navigation: any element with data-route changes the active screen. The
   // render functions recreate the visible page from the current state object.
@@ -1246,6 +1306,7 @@ function handleAction(action) {
     state.familyNotes.unshift({
       id: nextId(),
       memberId: state.familyNotePickId,
+      author: "me",
       text,
       date: "Today",
       done: false,
