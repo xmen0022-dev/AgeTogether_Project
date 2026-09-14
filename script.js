@@ -682,6 +682,27 @@ function renderAI() {
           <span class="simple-pet"><span class="simple-face"></span></span>
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
+        <section class="panel">
+          <h2>Ask your companion</h2>
+          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
+          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
+          <p class="muted quick-label"><strong>Or tap a question to ask:</strong></p>
+          <div class="quick-questions">
+            <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
+            <button class="question" data-ai-question="How can I remember to call my family?">"Remind me to call my family"</button>
+            <button class="question" data-ai-question="What gentle activities could I do today?">"What can I do today?"</button>
+          </div>
+        </section>
+        <div class="wide-actions">
+          <button class="primary" data-ai-action="daily-suggestion">&#x1F33F; Daily Suggestion</button>
+          <button class="blue-btn" data-ai-action="safety-tip">&#x1F6E1; Safety Tip</button>
+        </div>
+        <!--
+          Companion setup mount point.
+          pet.js fills this empty container with the photo picker, status card,
+          and companion history after the AI page has been rendered.
+        -->
+        <section class="panel" id="pet-setup"></section>
         <section class="ai-preferences panel">
           <h2>How would you like me to speak?</h2>
           <div class="form-grid">
@@ -712,27 +733,6 @@ function renderAI() {
             ${reminderRow("movement", "Movement", "Try gentle movement if safe.")}
           </div>
         </section>
-        <p class="muted quick-label"><strong>Quick questions - tap one to ask:</strong></p>
-        <div class="quick-questions">
-          <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
-          <button class="question" data-ai-question="How can I remember to call my family?">"Remind me to call my family"</button>
-          <button class="question" data-ai-question="What gentle activities could I do today?">"What can I do today?"</button>
-        </div>
-        <section class="panel">
-          <h2>Ask your companion</h2>
-          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
-          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
-        </section>
-        <div class="wide-actions">
-          <button class="primary" data-ai-action="daily-suggestion">&#x1F33F; Daily Suggestion</button>
-          <button class="blue-btn" data-ai-action="safety-tip">&#x1F6E1; Safety Tip</button>
-        </div>
-        <!--
-          Companion setup mount point.
-          pet.js fills this empty container with the photo picker, status card,
-          and companion history after the AI page has been rendered.
-        -->
-        <section class="panel" id="pet-setup"></section>
         <p class="muted secure-copy">&#x1F512; Your conversations are private and secure.</p>
       </section>
     </section>
