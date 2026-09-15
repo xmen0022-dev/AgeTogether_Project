@@ -142,12 +142,12 @@ function roleSwitcher() {
 
 function activityIcon(category) {
   const value = `${category || ""}`.toLowerCase();
-  if (value.includes("library")) return "&#x1F4DA;";
-  if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
-  if (value.includes("health") || value.includes("medical")) return "&#x1FA7A;";
-  if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
-  if (value.includes("community")) return "&#x1F91D;";
-  return "&#x1F4CD;";
+  if (value.includes("library")) return "📚";
+  if (value.includes("garden") || value.includes("park")) return "🌱";
+  if (value.includes("health") || value.includes("medical")) return "🩺";
+  if (value.includes("sport") || value.includes("recreation")) return "🚶";
+  if (value.includes("community")) return "🤝";
+  return "📍";
 }
 
 function notificationCounts() {
@@ -188,7 +188,7 @@ function homeNotifications() {
 
 function mapDiscoveryPlace(place) {
   const category = place.sub_theme || place.theme || "Community place";
-  const distance = place.distance_km ? ` &middot; ${place.distance_km} km away` : "";
+  const distance = place.distance_km ? ` · ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
     category,
