@@ -33,6 +33,7 @@ body {
   line-height: 1.55;
 }
 
+/* My feature: five global text-size levels controlled from the Profile page. */
 body.text-size-1 {
   font-size: 14px;
 }
@@ -151,6 +152,7 @@ h3 {
   background: var(--green-soft);
 }
 
+/* My feature: hide unavailable navigation items in supporter mode. */
 .top-nav button.nav-hidden {
   display: none;
 }
@@ -202,6 +204,7 @@ h3 {
   padding: 34px 0 70px;
 }
 
+/* My feature: Home entry switcher for older adults and family/supporters. */
 .role-entry {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -232,6 +235,7 @@ h3 {
   color: var(--muted);
 }
 
+/* My feature: compact Home notifications for Family, Friend, and Social. */
 .home-notifications {
   display: flex;
   justify-content: flex-end;
@@ -496,6 +500,7 @@ h3 {
   align-items: flex-end;
 }
 
+/* My feature: keep Family/Friends toolbars readable when text size increases. */
 .family-toolbar .chips,
 .friends-toolbar .chips {
   flex: 1 1 auto;
@@ -536,6 +541,7 @@ h3 {
 .pill {
   display: inline-flex;
   align-items: center;
+  /* My feature: allow long names and relationships to wrap instead of overflowing. */
   flex-wrap: wrap;
   gap: 7px;
   height: auto;
@@ -697,6 +703,7 @@ h3 {
   font-size: 0.82em;
 }
 
+/* My feature: notes use responsive columns so large text does not break cards. */
 .note-area {
   min-height: 442px;
   display: grid;
@@ -716,6 +723,7 @@ h3 {
   background-color: #fffdf8;
 }
 
+/* My feature: wider note cards at the two largest text-size levels. */
 body.text-size-4 .note-area,
 body.text-size-5 .note-area {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
@@ -773,6 +781,7 @@ body.text-size-5 .note-area {
 
 .note-head {
   display: flex;
+  /* My feature: let note author, relationship, and date wrap neatly. */
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
@@ -796,6 +805,7 @@ body.text-size-5 .note-area {
   margin-bottom: 18px;
   font-size: 1.06em;
   line-height: 1.45;
+  /* My feature: prevent long user text from spilling outside note cards. */
   overflow-wrap: anywhere;
 }
 
@@ -1184,6 +1194,7 @@ textarea {
   margin-top: 26px;
 }
 
+/* My feature: Profile controls for changing the global text size. */
 .text-size-picker {
   display: flex;
   flex-wrap: wrap;
@@ -1613,10 +1624,12 @@ textarea {
     padding: 24px 0 54px;
   }
 
+  /* My feature: stack the two entry buttons on narrow screens. */
   .role-entry {
     grid-template-columns: 1fr;
   }
 
+  /* My feature: keep the three Home notification buttons evenly spaced on mobile. */
   .home-notifications {
     justify-content: stretch;
     display: grid;

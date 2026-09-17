@@ -11,7 +11,9 @@ let activityMap = null; // Leaflet map instance, recreated on every render since
 // app.innerHTML replaces the DOM node the previous map instance was bound to.
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
+// My feature: current global text-size setting selected from the Profile page.
 let textSizeLevel = 3;
+// My feature: remembers whether the user is using the older-adult or supporter view.
 let userMode = localStorage.getItem("agetogether-user-mode") || "older";
 // pet.js reads this shared object when it creates localised speech or tips.
 // pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
@@ -39,6 +41,8 @@ const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
+// My feature: stores the last seen count for each Home notification type.
+// A notification appears only when the current count is higher than this value.
 const notificationSeen = {
   family: 0,
   friends: 0,
@@ -53,6 +57,7 @@ applyTextSize();
 function setRoute(nextRoute) {
   // Change the active screen and re-render the app from the current state.
   // In a full app this would usually be handled by a router library.
+  // My feature: block routes that are not available in supporter mode.
   const targetRoute = canAccessRoute(nextRoute) ? nextRoute : "family";
   // Tear down the Leaflet map first if we're leaving Social - its container
   // is about to be destroyed by the next app.innerHTML assignment.
@@ -61,6 +66,7 @@ function setRoute(nextRoute) {
     activityMap = null;
   }
   route = targetRoute;
+  // My feature: opening a section marks its Home notification as read.
   markNotificationsSeen(targetRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
@@ -105,27 +111,33 @@ function nextColor(existingCount) {
 }
 
 function applyTextSize() {
+  // My feature: apply one of five text-size classes to the whole page.
   document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
 function allowedRoutes() {
+  // My feature: supporter mode is a simplified entry with Family only.
   if (userMode === "supporter") return new Set(["home", "family", "manage-family", "profile"]);
   return new Set(["home", "family", "manage-family", "friends", "manage-friends", "social", "profile", "ai"]);
 }
 
 function canAccessRoute(routeName) {
+  // My feature: central helper used by navigation, Home cards, and notifications.
   return allowedRoutes().has(routeName);
 }
 
 function setUserMode(nextMode) {
+  // My feature: keep only two valid modes, and save the selected mode locally.
   userMode = nextMode === "supporter" ? "supporter" : "older";
   localStorage.setItem("agetogether-user-mode", userMode);
+  // My feature: if the current page is hidden in supporter mode, move to Family.
   if (!canAccessRoute(route)) route = "family";
   render();
 }
 
 function roleSwitcher() {
+  // My feature: two entry buttons shown on Home for different user groups.
   return `
     <section class="role-entry" aria-label="Choose experience">
       <button class="${userMode === "older" ? "active" : ""}" data-user-mode="older">
@@ -141,6 +153,8 @@ function roleSwitcher() {
 }
 
 function activityIcon(category) {
+  // My feature: return real Unicode icons, not HTML entities, so escaping user
+  // text does not turn icons into visible code such as "&#x1F4CD;".
   const value = `${category || ""}`.toLowerCase();
   if (value.includes("library")) return "📚";
   if (value.includes("garden") || value.includes("park")) return "🌱";
@@ -151,6 +165,7 @@ function activityIcon(category) {
 }
 
 function notificationCounts() {
+  // My feature: calculate lightweight notification counts from current data.
   return {
     family: state.familyNotes.filter((note) => !note.done).length,
     friends: Object.values(state.friendNotes)
@@ -161,6 +176,7 @@ function notificationCounts() {
 }
 
 function markNotificationsSeen(routeName) {
+  // My feature: update the read baseline when a user opens a notified section.
   const counts = notificationCounts();
   if (routeName === "family" || routeName === "manage-family") notificationSeen.family = counts.family;
   if (routeName === "friends" || routeName === "manage-friends") notificationSeen.friends = counts.friends;
@@ -168,6 +184,7 @@ function markNotificationsSeen(routeName) {
 }
 
 function homeNotifications() {
+  // My feature: build short Home notification buttons for unread sections only.
   const counts = notificationCounts();
   return [
     { key: "family", label: "Family", route: "family" },
@@ -188,6 +205,7 @@ function homeNotifications() {
 
 function mapDiscoveryPlace(place) {
   const category = place.sub_theme || place.theme || "Community place";
+  // My feature: use a real middle-dot character so it survives HTML escaping.
   const distance = place.distance_km ? ` · ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
@@ -368,6 +386,8 @@ function familyNoteCard(n) {
   // data so the UI can show the member name, relationship, colour, and initial.
   const member = getFamilyMember(n.memberId);
   if (!member) return "";
+  // My feature: notes created by the current user should show "Me" instead of
+  // showing the selected family member as the author.
   const isMe = n.author === "me";
   const displayName = isMe ? "Me" : member.name;
   const displayInitial = isMe ? "M" : member.initial;
@@ -783,6 +803,7 @@ function renderProfile() {
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
+      <!-- My feature: five-level text-size control for accessibility. -->
       <section class="panel profile-panel">
         <h2>Text size</h2>
         <div class="text-size-picker" aria-label="Text size">
@@ -972,12 +993,16 @@ async function askCompanion(task, input) {
 function render() {
   // Central render function. Every route rebuilds the visible UI from the
   // current data state. This is the main data-driven pattern in the prototype.
+  // My feature: supporter mode cannot stay on hidden pages such as Social or AI.
   if (!canAccessRoute(route)) route = "family";
   nav.forEach((button) => {
     const buttonRoute = button.dataset.route;
+    // My feature: hide navigation buttons that do not belong to the selected mode.
     button.classList.toggle("nav-hidden", !canAccessRoute(buttonRoute));
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
+  // My feature: the companion pet is hidden in supporter mode so it does not
+  // cover the Family page.
   pet.classList.toggle("hidden", userMode === "supporter" || !pagesWithPet.has(route));
 
   if (route === "home") renderHome();
@@ -1001,6 +1026,7 @@ document.addEventListener("click", (event) => {
 
   const userModeTarget = event.target.closest("[data-user-mode]");
   if (userModeTarget) {
+    // My feature: switch between the older-adult and family/supporter entries.
     setUserMode(userModeTarget.dataset.userMode);
     return;
   }
@@ -1242,6 +1268,7 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
+    // My feature: update the global text-size class when a Profile button is clicked.
     textSizeLevel = Number(textSizeTarget.dataset.textSize);
     applyTextSize();
     renderProfile();
@@ -1306,6 +1333,7 @@ function handleAction(action) {
     state.familyNotes.unshift({
       id: nextId(),
       memberId: state.familyNotePickId,
+      // My feature: mark newly created notes as written by the current user.
       author: "me",
       text,
       date: "Today",

@@ -36,6 +36,12 @@ function loadEnvFile() {
 
 loadEnvFile();
 
+// Site-wide password protection for the review/testing build.
+// Default credentials are intentionally simple because they are shared with
+// teaching staff in the team information document.
+const SITE_USERNAME = process.env.SITE_USERNAME || "agetogether";
+const SITE_PASSWORD = process.env.SITE_PASSWORD || "fit5120";
+
 // DeepSeek is called through its OpenAI-compatible HTTP endpoint, so the
 // server does not need a provider-specific SDK in the browser or frontend.
 // 通过 DeepSeek 的兼容 HTTP 接口调用模型，API Key 永远不会进入浏览器。
@@ -258,6 +264,20 @@ function sendJson(res, status, payload) {
 
   // End the response; status may be 200, 400, 429, or another HTTP status code.
   res.end(body);
+}
+
+function checkBasicAuth(req, res) {
+  const header = req.headers.authorization || "";
+  const expected = `Basic ${Buffer.from(`${SITE_USERNAME}:${SITE_PASSWORD}`).toString("base64")}`;
+
+  if (header === expected) return true;
+
+  res.writeHead(401, {
+    "WWW-Authenticate": 'Basic realm="AgeTogether"',
+    "Content-Type": "text/plain; charset=utf-8",
+  });
+  res.end("Authentication required.");
+  return false;
 }
 
 /*
@@ -532,6 +552,8 @@ async function handleNearbyPlaces(req, res, searchParams) {
 /* ------------------------------------------------------------------ */
 
 const server = createServer(async (req, res) => {
+  if (!checkBasicAuth(req, res)) return;
+
   const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
 
   try {
