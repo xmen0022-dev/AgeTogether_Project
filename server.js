@@ -552,9 +552,15 @@ async function handleNearbyPlaces(req, res, searchParams) {
 /* ------------------------------------------------------------------ */
 
 const server = createServer(async (req, res) => {
-  if (!checkBasicAuth(req, res)) return;
-
   const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
+
+  if (pathname === "/healthz") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("ok");
+    return;
+  }
+
+  if (!checkBasicAuth(req, res)) return;
 
   try {
     if (pathname === "/api/ask" && req.method === "POST") return await handleAsk(req, res);
