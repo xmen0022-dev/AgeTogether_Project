@@ -1,82 +1,55 @@
-const app = document.querySelector("#app");
+﻿const app = document.querySelector("#app");
 const pet = document.querySelector("#pet");
 const nav = [...document.querySelectorAll(".top-nav button")];
 
-// Current visible page. This simple router lets the prototype work like a
-// multi-page app while still using one static HTML file.
 let route = "home";
 let socialTab = "activities";
-let activityView = "list"; // "list" or "map" - only affects the Activities tab
-let activityMap = null; // Leaflet map instance, recreated on every render since
-// app.innerHTML replaces the DOM node the previous map instance was bound to.
+let activityView = "list";
+let activityMap = null;
 let aiPreferences = { language: "en-AU", style: "simple" };
 let aiRequestNumber = 0;
-// My feature: current global text-size setting selected from the Profile page.
 let textSizeLevel = 3;
-// My feature: remembers whether the user is using the older-adult or supporter view.
-let userMode = localStorage.getItem("agetogether-user-mode") || "older";
-// pet.js reads this shared object when it creates localised speech or tips.
-// pet.js 会读取这个共享对象，让气泡文字和 AI 设置保持同一种语言。
+const validRoutes = new Set(["home", "letter", "social", "profile", "ai"]);
+const pagesWithPet = new Set(["letter", "social", "profile", "ai"]);
 window.aiPreferences = aiPreferences;
-
-// The floating companion button is only useful after the landing page, so this
-// list controls where it appears.
-const pagesWithPet = new Set(["family", "friends", "manage-family", "manage-friends", "social", "profile", "ai"]);
-
-/* ------------------------------------------------------------------ */
-/* Runtime state loaded from data.js                                   */
-/* ------------------------------------------------------------------ */
 
 const appData = window.appData || {};
 let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
-
-const COLORS = appData.colors || ["peach", "purple", "blue", "green"];
-// Make a runtime copy of the seed data from data.js.
-// This is important for the prototype: user actions can mutate `state` without
-// changing the original seed object. In a future backend version, this state
-// would be populated by API responses instead of the static data.js file.
 const state = JSON.parse(JSON.stringify(appData.state || {}));
 const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
-// My feature: stores the last seen count for each Home notification type.
-// A notification appears only when the current count is higher than this value.
+const letterDraft = {
+  recipientName: "",
+  recipientEmail: "",
+  subject: "A note from AgeTogether",
+  body: "",
+  paper: "cream",
+  textColor: "ink",
+  font: "serif",
+};
 const notificationSeen = {
-  family: 0,
-  friends: 0,
   social: 0,
 };
 applyTextSize();
-
-/* ------------------------------------------------------------------ */
-/* Helpers                                                              */
 /* ------------------------------------------------------------------ */
 
 function setRoute(nextRoute) {
-  // Change the active screen and re-render the app from the current state.
-  // In a full app this would usually be handled by a router library.
-  // My feature: block routes that are not available in supporter mode.
-  const targetRoute = canAccessRoute(nextRoute) ? nextRoute : "family";
-  // Tear down the Leaflet map first if we're leaving Social - its container
-  // is about to be destroyed by the next app.innerHTML assignment.
+  const targetRoute = validRoutes.has(nextRoute) ? nextRoute : "letter";
   if (targetRoute !== "social" && activityMap) {
     activityMap.remove();
     activityMap = null;
   }
   route = targetRoute;
-  // My feature: opening a section marks its Home notification as read.
+  // Opening a section marks its Home notification as read.
   markNotificationsSeen(targetRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
 
 function parentRoute(routeName) {
-  // Management pages still belong to their parent navigation items, so the
-  // bottom navigation highlights Family/Friends instead of adding extra tabs.
-  if (routeName === "manage-family") return "family";
-  if (routeName === "manage-friends") return "friends";
   return routeName;
 }
 
@@ -85,7 +58,6 @@ function activeRoute() {
 }
 
 function pageHead(title, subtitle) {
-  // Reusable header component for pages that use a top title area.
   return `
     <section class="page-head">
       <h1>${title}</h1>
@@ -94,104 +66,48 @@ function pageHead(title, subtitle) {
   `;
 }
 
-function getFamilyMember(id) {
-  // Lookup helper used by notes and management actions.
-  return state.familyMembers.find((m) => m.id === id);
-}
-
-function getFriend(id) {
-  // Lookup helper used by the Friends board and friend management screen.
-  return state.friends.find((f) => f.id === id);
-}
-
-function nextColor(existingCount) {
-  // Gives newly added people a rotating colour so generated cards still match
-  // the existing visual system.
-  return COLORS[existingCount % COLORS.length];
-}
-
 function applyTextSize() {
-  // My feature: apply one of five text-size classes to the whole page.
-  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
+  // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
+  // The actual font sizes are defined in styles.css on body.text-size-1
+  // through body.text-size-5. Replacing the class keeps the change simple and global.
+  // 鎶?1 鍒?5 妗ｅ瓧浣撹缃浆鎹㈡垚 body 涓婄殑 CSS class銆傚叿浣撳瓧鍙峰啓鍦?  // styles.css 閲岋紝杩欐牱椤甸潰澶ч儴鍒嗘枃瀛楅兘浼氳窡鐫€ body 鐨勫瓧鍙蜂竴璧峰彉鍖栥€?  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
-function allowedRoutes() {
-  // My feature: supporter mode is a simplified entry with Family only.
-  if (userMode === "supporter") return new Set(["home", "family", "manage-family", "profile"]);
-  return new Set(["home", "family", "manage-family", "friends", "manage-friends", "social", "profile", "ai"]);
-}
-
-function canAccessRoute(routeName) {
-  // My feature: central helper used by navigation, Home cards, and notifications.
-  return allowedRoutes().has(routeName);
-}
-
-function setUserMode(nextMode) {
-  // My feature: keep only two valid modes, and save the selected mode locally.
-  userMode = nextMode === "supporter" ? "supporter" : "older";
-  localStorage.setItem("agetogether-user-mode", userMode);
-  // My feature: if the current page is hidden in supporter mode, move to Family.
-  if (!canAccessRoute(route)) route = "family";
-  render();
-}
-
-function roleSwitcher() {
-  // My feature: two entry buttons shown on Home for different user groups.
-  return `
-    <section class="role-entry" aria-label="Choose experience">
-      <button class="${userMode === "older" ? "active" : ""}" data-user-mode="older">
-        <strong>Older adult</strong>
-        <span>Full app</span>
-      </button>
-      <button class="${userMode === "supporter" ? "active" : ""}" data-user-mode="supporter">
-        <strong>Family / supporter</strong>
-        <span>Family only</span>
-      </button>
-    </section>
-  `;
-}
-
 function activityIcon(category) {
-  // My feature: return real Unicode icons, not HTML entities, so escaping user
-  // text does not turn icons into visible code such as "&#x1F4CD;".
+  // Use numeric HTML entities for controlled activity icons.
+  // This avoids broken emoji encoding in the Social cards.
   const value = `${category || ""}`.toLowerCase();
-  if (value.includes("library")) return "📚";
-  if (value.includes("garden") || value.includes("park")) return "🌱";
-  if (value.includes("health") || value.includes("medical")) return "🩺";
-  if (value.includes("sport") || value.includes("recreation")) return "🚶";
-  if (value.includes("community")) return "🤝";
-  return "📍";
+  if (value.includes("library")) return "&#x1F4DA;";
+  if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
+  if (value.includes("health") || value.includes("medical")) return "&#x267F;";
+  if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
+  return "&#x1F4CD;";
 }
 
 function notificationCounts() {
-  // My feature: calculate lightweight notification counts from current data.
+  // This prototype does not have real-time users yet, so Home shows a small
+  // Social update when activities are available.
   return {
-    family: state.familyNotes.filter((note) => !note.done).length,
-    friends: Object.values(state.friendNotes)
-      .flat()
-      .filter((note) => note.author === "friend").length,
     social: Math.min(2, state.activities.length),
   };
 }
 
 function markNotificationsSeen(routeName) {
-  // My feature: update the read baseline when a user opens a notified section.
+  // My feature / 鎴戠殑鍔熻兘锛歶pdate the read baseline for the section the user opened.
+  // This makes notification chips disappear after they are clicked or
+  // after the user manually visits the related page.
+  // 鐢ㄦ埛鐐瑰嚮閫氱煡鎴栦富鍔ㄨ繘鍏ュ搴旈〉闈㈠悗锛岃繖閲屼細鎶婂綋鍓嶆暟閲忚涓哄凡璇诲熀鍑嗭紝
   const counts = notificationCounts();
-  if (routeName === "family" || routeName === "manage-family") notificationSeen.family = counts.family;
-  if (routeName === "friends" || routeName === "manage-friends") notificationSeen.friends = counts.friends;
   if (routeName === "social") notificationSeen.social = counts.social;
 }
 
 function homeNotifications() {
-  // My feature: build short Home notification buttons for unread sections only.
+  // Render only unread Home notification buttons.
   const counts = notificationCounts();
   return [
-    { key: "family", label: "Family", route: "family" },
-    { key: "friends", label: "Friend", route: "friends" },
     { key: "social", label: "Social", route: "social" },
   ]
-    .filter((item) => canAccessRoute(item.route))
     .filter((item) => counts[item.key] > notificationSeen[item.key])
     .map((item) => {
       return `
@@ -205,8 +121,8 @@ function homeNotifications() {
 
 function mapDiscoveryPlace(place) {
   const category = place.sub_theme || place.theme || "Community place";
-  // My feature: use a real middle-dot character so it survives HTML escaping.
-  const distance = place.distance_km ? ` · ${place.distance_km} km away` : "";
+  // Use an ASCII separator so place distances render consistently.
+  const distance = place.distance_km ? ` - ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
     category,
@@ -256,7 +172,7 @@ async function loadDatabaseActivities() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Home                                                                 */
+/* Home / 棣栭〉                                                          */
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
@@ -264,22 +180,20 @@ function renderHome() {
   // points into the main tools.
   const notifications = homeNotifications();
   const cards = [
-    homeCard("family", "family-card", "&#x1F3E0;", "Family", "Private reminders and messages from trusted family members."),
-    homeCard("friends", "friends-card", "&#x1F4CC;", "Friends", "A calm shared board for people you already know."),
+    homeCard("letter", "letter-card", "&#x2709;", "Letter", "Write a personal letter with your choice of paper, colour, and font."),
     homeCard("social", "social-card", "&#x1F5FA;", "Social", "Nearby activities and useful local information."),
   ];
   app.innerHTML = `
     <section class="home-wrap">
-      ${roleSwitcher()}
       ${notifications ? `<section class="home-notifications" aria-label="Notifications">${notifications}</section>` : ""}
       <section class="home-hero">
         <div class="hero-copy">
           <span class="home-kicker">Support for healthy ageing</span>
           <h1>AgeTogether Australia</h1>
-          <p class="hero-lead">A simple digital space that helps older Australians stay connected with trusted people, family reminders, and nearby community activities.</p>
+          <p class="hero-lead">A simple digital space that helps older Australians write personal letters, stay connected, and discover nearby community activities.</p>
           <div class="hero-actions">
-            <button class="get-started" data-route="family">Get Started</button>
-            ${canAccessRoute("social") ? `<button class="outline-btn" data-route="social">Explore Activities</button>` : ""}
+            <button class="get-started" data-route="letter">Get Started</button>
+            <button class="outline-btn" data-route="social">Explore Activities</button>
           </div>
         </div>
         <div class="hero-image" role="img" aria-label="Two older adults smiling together in a park">
@@ -293,7 +207,7 @@ function renderHome() {
           <h2>Choose where to go</h2>
         </div>
         <section class="menu-list">
-          ${cards.filter((card) => canAccessRoute(card.routeName)).map((card) => card.html).join("")}
+          ${cards.map((card) => card.html).join("")}
         </section>
       </section>
     </section>
@@ -301,7 +215,6 @@ function renderHome() {
 }
 
 function homeCard(routeName, className, icon, title, copy) {
-  // Small reusable card component for the Home menu.
   return {
     routeName,
     html: `
@@ -318,273 +231,259 @@ function homeCard(routeName, className, icon, title, copy) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Family                                                               */
+/* Letter / personal letter writer                                     */
 /* ------------------------------------------------------------------ */
 
-function renderFamily() {
-  // Family Board is data-driven:
-  // 1. Filter notes based on `state.familyFilterId`.
-  // 2. Convert every visible note object into a note card.
-  // 3. Rebuild the page from the latest state.
-  const visibleNotes = state.familyNotes.filter((n) => !state.familyFilterId || n.memberId === state.familyFilterId);
+const letterPaperOptions = [
+  { key: "cream", label: "Cream" },
+  { key: "rose", label: "Rose" },
+  { key: "sky", label: "Sky" },
+  { key: "mint", label: "Mint" },
+  { key: "lavender", label: "Lavender" },
+  { key: "white", label: "White" },
+];
 
+const letterTextOptions = [
+  { key: "ink", label: "Ink" },
+  { key: "navy", label: "Navy" },
+  { key: "forest", label: "Forest" },
+  { key: "plum", label: "Plum" },
+  { key: "brown", label: "Brown" },
+];
+
+const letterFontOptions = [
+  { key: "serif", label: "Serif" },
+  { key: "sans", label: "Clear sans" },
+  { key: "hand", label: "Handwritten" },
+];
+
+function renderLetter() {
   app.innerHTML = `
-    ${pageHead("Family Board", "Private messages and care reminders from your family")}
-    <section class="container">
-      <div class="toolbar family-toolbar">
-        <div class="chips">
-          <strong class="muted">Showing notes from:</strong>
-          ${state.familyMembers.map((m) => familyFilterChip(m)).join("")}
-        </div>
-        <button class="outline-btn" data-route="manage-family">&#x1F465; Manage Family</button>
-      </div>
-      <section class="board family-board">
-        <div class="note-area family-note-area">
-          ${
-            visibleNotes.length
-              ? visibleNotes.map((n) => familyNoteCard(n)).join("")
-              : `<p class="muted">No notes from this person yet.</p>`
-          }
-        </div>
-      </section>
-      <section class="two-col">
-        <div class="panel">
-          <h2>Add a family note</h2>
-          <div class="chips note-picker">
-            ${state.familyMembers.map((m) => `<button class="pill ${m.id === state.familyNotePickId ? "active" : ""}" data-pick-family-member="${m.id}">${escapeHtml(m.name)}</button>`).join("")}
+    ${pageHead("Letter", "Write a personal message without creating an account")}
+    <section class="container letter-shell">
+      <details class="letter-format-menu" open>
+        <summary>
+          <span class="format-menu-title">Letter style</span>
+          <span class="format-menu-current">Choose paper, text colour, and font</span>
+        </summary>
+        <div class="letter-options">
+          <div>
+            <h3>Paper</h3>
+            <div class="letter-choice-row">
+              ${letterPaperOptions.map((item) => letterChoice("paper", item)).join("")}
+            </div>
           </div>
-          <textarea id="family-note-input" placeholder="Write a reminder or note for the family board..."></textarea>
-          <p class="align-right"><button class="blue-btn" data-action="add-family-note">+ Add Family Note</button></p>
-        </div>
-        <div class="panel">
-          <h2>Quick actions</h2>
-          <div class="actions">
-            <button class="message-action" data-action="focus-family-note">&#x25A1; Send Message</button>
-            <button class="done-action" data-action="mark-all-family-done">&#x2611; Mark All Done</button>
+          <div>
+            <h3>Text colour</h3>
+            <div class="letter-choice-row">
+              ${letterTextOptions.map((item) => letterChoice("color", item)).join("")}
+            </div>
           </div>
-          <p class="notice compact">&#x1F512; Only your trusted family members can see this board. It is private and safe.</p>
+          <div>
+            <h3>Font</h3>
+            <div class="letter-choice-row">
+              ${letterFontOptions.map((item) => letterChoice("font", item)).join("")}
+            </div>
+          </div>
         </div>
-      </section>
-    </section>
-    <div class="help-bubble">Need help? Tap me to<br />chat &#x1F338;</div>
-  `;
-}
+      </details>
 
-function familyFilterChip(member) {
-  // Member filter chips are generated from `state.familyMembers`.
-  // The active chip is determined by the current filter state.
-  const active = state.familyFilterId === member.id;
-  return `
-    <button class="pill ${active ? "active" : ""} ${member.color}-pill" data-family-filter="${member.id}">
-      <span class="mini-avatar ${member.color}">${escapeHtml(member.initial)}</span>${escapeHtml(member.name)}<span class="dot">&middot;</span><span class="muted">${escapeHtml(member.rel)}</span>
-    </button>
-  `;
-}
+      <div class="letter-layout">
+        <section class="panel letter-editor">
+          <div class="letter-editor-head">
+            <span class="letter-icon">&#x2709;</span>
+            <div>
+              <h2>Write your letter</h2>
+              <p class="muted">Write the message, then download it or prepare an email.</p>
+            </div>
+          </div>
 
-function familyNoteCard(n) {
-  // A note only stores `memberId`; this function joins note data with member
-  // data so the UI can show the member name, relationship, colour, and initial.
-  const member = getFamilyMember(n.memberId);
-  if (!member) return "";
-  // My feature: notes created by the current user should show "Me" instead of
-  // showing the selected family member as the author.
-  const isMe = n.author === "me";
-  const displayName = isMe ? "Me" : member.name;
-  const displayInitial = isMe ? "M" : member.initial;
-  const displayColor = isMe ? "green" : member.color;
-  const relation = !isMe && member.rel ? `<span class="muted"> &middot; ${escapeHtml(member.rel)}</span>` : "";
-  return `
-    <article class="note ${member.color} ${n.done ? "done" : ""}">
-      <div class="note-head">
-        <strong><span class="mini-avatar ${displayColor}">${escapeHtml(displayInitial)}</span>${escapeHtml(displayName)}${relation}</strong>
-        <span>${escapeHtml(n.date)}</span>
+          <div class="two-col compact-fields">
+            <div class="field">
+              <label for="letter-recipient-name">Recipient name</label>
+              <input id="letter-recipient-name" data-letter-field="recipientName" value="${escapeHtml(letterDraft.recipientName)}" placeholder="e.g. Sophie" />
+            </div>
+            <div class="field">
+              <label for="letter-recipient-email">Recipient email</label>
+              <input id="letter-recipient-email" data-letter-field="recipientEmail" value="${escapeHtml(letterDraft.recipientEmail)}" placeholder="name@example.com" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="letter-subject">Subject</label>
+            <input id="letter-subject" data-letter-field="subject" value="${escapeHtml(letterDraft.subject)}" />
+          </div>
+
+          <div class="field">
+            <label for="letter-body">Message</label>
+            <textarea id="letter-body" class="letter-body-input" data-letter-field="body" placeholder="Write your letter here...">${escapeHtml(letterDraft.body)}</textarea>
+          </div>
+
+          <div class="wide-actions letter-actions">
+            <button class="primary" data-action="download-letter">Download letter</button>
+            <button class="blue-btn" data-action="send-letter">Send by email</button>
+          </div>
+        </section>
+
+        <section class="panel letter-preview-panel">
+          <h2>Preview</h2>
+          <div id="letter-preview">
+            ${letterPreviewMarkup()}
+          </div>
+        </section>
       </div>
-      <p>${escapeHtml(n.text)}</p>
-      <button class="note-action" data-toggle-family-note="${n.id}">${n.done ? "&#x2713; Done" : "&#x25EF; Tap to mark done"}</button>
-    </article>
-  `;
-}
-
-function renderManageFamily() {
-  // Management screen for trusted family members.
-  // The member list is rendered from `state.familyMembers`, so adding/removing
-  // members immediately changes the list after re-rendering.
-  app.innerHTML = `
-    ${pageHead("Manage Family Members", "Control who can post on your family board")}
-    <section class="container narrow">
-      <button class="outline-btn back-btn" data-route="family">&larr; Back to Family Board</button>
-      <p class="notice">&#x1F512; You control who can post on your family board. Only the people listed here can leave notes.</p>
-      <section class="panel form-card">
-        <h2>Add a family member</h2>
-        <p class="muted">Enter their details and we will send them a private family invite.</p>
-        <div class="form-grid">
-          <div class="field"><label>Name</label><input id="fam-add-name" placeholder="e.g. Sarah" /></div>
-          <div class="field"><label>Relationship</label><input id="fam-add-rel" placeholder="e.g. Daughter, Nephew, Carer" /></div>
-          <div class="field full"><label>Email or phone number</label><input id="fam-add-contact" placeholder="example@email.com or 04xx xxx xxx" /></div>
-        </div>
-        <p><button class="primary wide" data-action="add-family-member">Send Family Invite</button></p>
-      </section>
-      <section class="member-list">
-        <h2>Your family members</h2>
-        <p class="muted">${state.familyMembers.length} trusted people connected to your family board.</p>
-        ${state.familyMembers.map((m) => familyMemberRow(m)).join("") || `<p class="muted">No family members yet.</p>`}
-      </section>
     </section>
   `;
 }
 
-function familyMemberRow(m) {
-  // One row in the family member management list.
-  // `muted` only changes the local prototype state at the moment.
+function letterChoice(type, item) {
+  const active =
+    (type === "paper" && letterDraft.paper === item.key) ||
+    (type === "color" && letterDraft.textColor === item.key) ||
+    (type === "font" && letterDraft.font === item.key);
+  const dataName = type === "color" ? "letter-color" : `letter-${type}`;
+  const styleClass = type === "paper" ? `letter-swatch paper-${item.key}` : type === "color" ? `letter-swatch ink-${item.key}` : "letter-font-button";
+  return `<button class="${styleClass} ${active ? "active" : ""}" data-${dataName}="${item.key}" type="button">${escapeHtml(item.label)}</button>`;
+}
+
+function letterPreviewMarkup() {
+  const body = letterDraft.body.trim() || "Write your message on the left. Your letter preview will appear here.";
+  const today = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+
   return `
-    <article class="member ${m.muted ? "muted" : ""}">
-      <span class="avatar ${m.color}">${escapeHtml(m.initial)}</span>
-      <span><h3>${escapeHtml(m.name)} <span class="muted">&middot; ${escapeHtml(m.rel)}</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${escapeHtml(m.contact)}</p></span>
-      <button class="ghost" data-mute-family="${m.id}">&#x1F507; ${m.muted ? "Unmute" : "Mute messages"}</button>
-      <button class="danger" data-remove-family="${m.id}">Remove</button>
+    <article class="letter-paper letter-paper-${letterDraft.paper} letter-ink-${letterDraft.textColor} letter-font-${letterDraft.font}">
+      <p class="letter-date">${escapeHtml(today)}</p>
+      <p class="letter-body-preview">${escapeHtml(body).replace(/\n/g, "<br />")}</p>
     </article>
   `;
 }
 
-/* ------------------------------------------------------------------ */
-/* Friends                                                              */
-/* ------------------------------------------------------------------ */
-
-function renderFriends() {
-  // Friends Board is also data-driven:
-  // - `state.selectedFriendId` decides which board is open.
-  // - `state.friendNotes[friend.id]` provides that board's messages.
-  // - Posting a new message updates the selected friend's note array.
-  const friend = getFriend(state.selectedFriendId);
-  const notes = friend ? state.friendNotes[friend.id] || [] : [];
-
-  app.innerHTML = `
-    <section class="container">
-      <div class="toolbar friends-toolbar">
-        <div>
-          <p class="muted"><strong>Choose a friend to open their shared board:</strong></p>
-          <div class="chips">
-            ${state.friends.map((f) => friendPick(f)).join("") || `<p class="muted">No friends connected yet.</p>`}
-          </div>
-        </div>
-        <button class="outline-btn" data-route="manage-friends">&#x1F465; Manage Friends</button>
-      </div>
-      ${
-        friend
-          ? `
-      <section class="board">
-        <div class="board-title">
-          <div class="title-row">
-            <span class="avatar ${friend.color}">${escapeHtml(friend.initial)}</span>
-            <span><h2>Shared board with ${escapeHtml(friend.name)}</h2><p class="muted">A quiet place to leave notes for each other - read them whenever you like.</p></span>
-          </div>
-          <p class="muted privacy-copy">&#x1F512; Private board<br />Only you and ${escapeHtml(friend.name)} can see this</p>
-        </div>
-        <div class="note-area friend-note-area">
-          ${
-            notes.length
-              ? notes.map((n) => friendNoteCard(n, friend)).join("")
-              : `<p class="muted">No messages yet - be the first to say hello!</p>`
-          }
-        </div>
-        <div class="message-panel">
-          <h2>Leave a message on the board...</h2>
-          <div class="message-form">
-            <textarea id="friend-note-input" placeholder="Write something for ${escapeHtml(friend.name)} to read when they visit..."></textarea>
-            <button class="primary" data-action="post-friend-note">Post Message</button>
-          </div>
-          <p class="muted small">Your message will appear on the shared board. ${escapeHtml(friend.name)} will see it the next time they visit.</p>
-        </div>
-      </section>
-      `
-          : `<p class="muted">Add a friend to start a shared board.</p>`
-      }
-    </section>
-  `;
+function updateLetterPreview() {
+  const preview = document.querySelector("#letter-preview");
+  if (preview) preview.innerHTML = letterPreviewMarkup();
 }
 
-function friendPick(friend) {
-  // Friend selector card. The note count is calculated from the current data,
-  // so it updates after new messages are posted.
-  const active = friend.id === state.selectedFriendId;
-  const noteCount = (state.friendNotes[friend.id] || []).length;
-  return `
-    <button class="friend-pick ${active ? "active" : ""}" data-select-friend="${friend.id}">
-      <span class="avatar ${friend.color}">${escapeHtml(friend.initial)}</span>
-      <span><h3>${escapeHtml(friend.name)}</h3><p class="muted">${noteCount} note${noteCount === 1 ? "" : "s"} on board</p></span>
-      <span class="status-dot"></span>
-    </button>
-  `;
+function letterPlainText() {
+  return letterDraft.body.trim() || "";
 }
 
-function friendNoteCard(n, friend) {
-  // Friend notes have two possible authors: "you" or "friend".
-  // The displayed initial/name changes based on the author value.
-  const isYou = n.author === "you";
-  const initial = isYou ? "Y" : friend.initial;
-  const name = isYou ? "You" : friend.name;
+const letterDownloadStyles = {
+  paper: {
+    cream: "#fff5dc",
+    rose: "#ffe7e0",
+    sky: "#e4f3ff",
+    mint: "#e8f7ed",
+    lavender: "#f0e9ff",
+    white: "#fffdf7",
+  },
+  text: {
+    ink: "#142331",
+    navy: "#163f73",
+    forest: "#27623d",
+    plum: "#65305f",
+    brown: "#69462b",
+  },
+  font: {
+    serif: `Georgia, "Times New Roman", serif`,
+    sans: `Aptos, "Segoe UI", Arial, sans-serif`,
+    hand: `"Comic Sans MS", "Segoe Print", cursive`,
+  },
+};
+
+function selectedLetterStyle(group, key, fallback) {
+  return letterDownloadStyles[group][key] || letterDownloadStyles[group][fallback];
+}
+
+function downloadableLetterMarkup() {
+  const today = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  const body = letterDraft.body.trim() || "Write your message before downloading.";
+  const paper = selectedLetterStyle("paper", letterDraft.paper, "cream");
+  const text = selectedLetterStyle("text", letterDraft.textColor, "ink");
+  const font = selectedLetterStyle("font", letterDraft.font, "serif");
+
   return `
-    <article class="note ${n.color} ${n.liked ? "done" : ""}">
-      <div class="note-head">
-        <strong><span class="mini-avatar ${n.color}">${escapeHtml(initial)}</span>${escapeHtml(name)}</strong>
-        <span>${escapeHtml(n.date)}</span>
-      </div>
-      <p>${escapeHtml(n.text)}</p>
-      <button class="note-action" data-toggle-friend-like="${n.id}">${n.liked ? "&#x2764;&#xFE0F; Liked" : "&#x1F90D; Like"}</button>
+    <article style="max-width:760px; min-height:520px; margin:0 auto; border:2px solid rgba(95,74,48,0.2); border-radius:18px; padding:42px; background:${paper}; color:${text}; font-family:${font}; font-size:20px; line-height:1.7; box-shadow:0 24px 42px rgba(70,55,36,0.16);">
+      <p style="margin:0 0 24px; text-align:right; opacity:0.76;">${escapeHtml(today)}</p>
+      <p style="margin:0 0 24px;">${escapeHtml(body).replace(/\n/g, "<br />")}</p>
     </article>
   `;
 }
 
-function renderManageFriends() {
-  // Management screen for trusted friends.
-  // This supports the prototype flow for inviting known contacts only.
-  app.innerHTML = `
-    ${pageHead("Manage Friends", "Control your trusted friend connections")}
-    <section class="container narrow">
-      <button class="outline-btn back-btn" data-route="friends">&larr; Back to Friends Board</button>
-      <p class="notice blue-notice">&#x1F6E1; <strong>For your safety,</strong> AgeTogether does not recommend strangers. You can only add people you already know using their email, phone number, or an invitation code they have shared with you.</p>
-      <section class="panel form-card">
-        <h2>Add someone you already know</h2>
-        <p class="muted">Enter their name and one of the following to send them a private invitation.</p>
-        <div class="form-grid single">
-          <div class="field"><label>Name</label><input id="friend-add-name" placeholder="e.g. Robert" /></div>
-          <div class="field"><label>Email address</label><input id="friend-add-email" placeholder="example@email.com" /></div>
-          <div class="field"><label>Phone number</label><input id="friend-add-phone" placeholder="04xx xxx xxx" /></div>
-          <div class="field"><label>Invitation code</label><input id="friend-add-code" placeholder="e.g. FRIEND-1234" /></div>
-        </div>
-        <p><button class="primary wide" data-action="add-friend">Send Friend Invite</button></p>
-      </section>
-      <section class="member-list">
-        <h2>Your friends</h2>
-        <p class="muted">${state.friends.length} trusted friends connected to your boards.</p>
-        ${state.friends.map((f) => friendMemberRow(f)).join("") || `<p class="muted">No friends yet.</p>`}
-      </section>
-    </section>
-  `;
+function downloadLetter() {
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${escapeHtml(letterDraft.subject || "AgeTogether letter")}</title>
+  <style>
+    body { margin: 0; padding: 42px; background: #f7f3ec; color: #172b3a; }
+    @media print { body { background: white; } }
+  </style>
+</head>
+<body>
+  ${downloadableLetterMarkup()}
+</body>
+</html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "AgeTogether-letter.html";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
-function friendMemberRow(f) {
-  // One row in the friend management list.
-  // View, mute, and remove buttons are wired through data attributes.
-  return `
-    <article class="member ${f.muted ? "muted" : ""}">
-      <span class="avatar ${f.color}">${escapeHtml(f.initial)}</span>
-      <span><h3>${escapeHtml(f.name)} <span class="muted">&middot; Friend</span> <span class="small-badge">&#x2713; Active</span></h3><p class="muted">${escapeHtml(f.contact)}</p></span>
-      <button class="ghost" data-route="friends">View Board</button>
-      <button class="ghost" data-mute-friend="${f.id}">&#x1F507; ${f.muted ? "Unmute" : "Mute"}</button>
-      <button class="danger" data-remove-friend="${f.id}">Remove</button>
-    </article>
-  `;
+async function sendLetter() {
+  const email = letterDraft.recipientEmail.trim();
+  if (!email) {
+    alert("Please enter a recipient email first.");
+    return;
+  }
+
+  if (!letterDraft.body.trim()) {
+    alert("Please write a message before sending.");
+    return;
+  }
+
+  const subject = letterDraft.subject.trim() || "A note from AgeTogether";
+  const sender = state.profile?.preferredName || state.profile?.fullName || "Me";
+  const date = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+
+  try {
+    const response = await fetch("/api/send-letter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: email,
+        subject,
+        text: letterPlainText(),
+        letter: {
+          recipient: letterDraft.recipientName.trim() || "Someone special",
+          body: letterDraft.body.trim(),
+          sender,
+          date,
+          paper: letterDraft.paper,
+          textColor: letterDraft.textColor,
+          font: letterDraft.font,
+        },
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result?.error || "Email could not be sent.");
+
+    alert("Letter sent.");
+  } catch (error) {
+    alert(error?.message || "Email could not be sent.");
+  }
 }
 
-/* ------------------------------------------------------------------ */
-/* Social                                                               */
+/* Social / 绀句氦涓庣ぞ鍖烘椿鍔?                                             */
 /* ------------------------------------------------------------------ */
 
 function renderSocial() {
-  // Social page switches between three data views:
-  // activities, news, and saved items. `socialTab` controls which renderer is
-  // used without changing the overall page shell.
   const content = {
     activities: renderActivities(),
     news: renderNews(),
@@ -604,9 +503,6 @@ function renderSocial() {
     </section>
   `;
 
-  // The map only exists inside the Activities tab. It has to be (re)built
-  // after the HTML above is in the DOM, because Leaflet needs a real
-  // container element to attach to, and app.innerHTML just replaced it.
   if (socialTab === "activities" && activityView === "map") {
     const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
     initActivityMap(filtered);
@@ -671,7 +567,7 @@ function activity(a) {
   return `
     <article class="activity-card">
       <div class="card-top">
-        <span class="activity-icon">${escapeHtml(a.icon)}</span>
+        <span class="activity-icon">${a.icon}</span>
         <h3>${escapeHtml(a.title)}</h3>
         <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
       </div>
@@ -731,7 +627,7 @@ function initActivityMap(activities) {
     activityMap.fitBounds(bounds.pad(0.25));
   } else {
     // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
-    activityMap.setView([-37.8136, 144.9631], 12);
+    // 濡傛灉绛涢€夊悗鐨勬椿鍔ㄩ兘娌℃湁鍧愭爣锛屽氨鍥為€€鍒板ⅷ灏旀湰 CBD 鐨勯粯璁ゅ湴鍥捐鍥俱€?    activityMap.setView([-37.8136, 144.9631], 12);
   }
 }
 
@@ -793,7 +689,7 @@ function renderSaved() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Profile                                                              */
+/* Profile / 涓汉璧勬枡                                                   */
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
@@ -803,7 +699,12 @@ function renderProfile() {
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
-      <!-- My feature: five-level text-size control for accessibility. -->
+      <!--
+        My feature / 鎴戠殑鍔熻兘锛歠ive-level text-size control for accessibility.
+        These buttons only change the visual reading size of the prototype;
+        they do not change profile data or require any account/login information.
+        杩欓噷鎻愪緵 1 鍒?5 妗ｉ槄璇诲瓧鍙疯皟鑺傦紝鍙奖鍝嶉〉闈㈡樉绀哄ぇ灏忥紝
+        涓嶄慨鏀逛釜浜鸿祫鏂欙紝涔熶笉闇€瑕佺櫥褰曡处鍙枫€?      -->
       <section class="panel profile-panel">
         <h2>Text size</h2>
         <div class="text-size-picker" aria-label="Text size">
@@ -861,7 +762,7 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI page and Companion integration                                  */
+/* AI page and Companion integration / AI 椤甸潰鍜屾瀹犻泦鎴?               */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
@@ -901,7 +802,7 @@ function renderAI() {
           <p class="muted quick-label"><strong>Or tap a question to ask:</strong></p>
           <div class="quick-questions">
             <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
-            <button class="question" data-ai-question="How can I remember to call my family?">"Remind me to call my family"</button>
+            <button class="question" data-ai-question="How can I keep in touch with people I care about?">"Help me keep in touch"</button>
             <button class="question" data-ai-question="What gentle activities could I do today?">"What can I do today?"</button>
           </div>
         </section>
@@ -913,7 +814,7 @@ function renderAI() {
           Companion setup mount point.
           pet.js fills this empty container with the photo picker, status card,
           and companion history after the AI page has been rendered.
-        -->
+          Companion 璁剧疆鍖哄煙鐨勬寕杞界偣銆?          AI 椤甸潰娓叉煋瀹屾垚鍚庯紝pet.js 浼氭妸鐓х墖閫夋嫨鍣ㄣ€佺姸鎬佸崱鐗囧拰鍘嗗彶璁板綍濉埌杩欓噷銆?        -->
         <section class="panel" id="pet-setup"></section>
         <section class="ai-preferences panel">
           <h2>How would you like me to speak?</h2>
@@ -922,8 +823,8 @@ function renderAI() {
               <label for="ai-language">Language</label>
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
-                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>简体中文</option>
-                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>繁體中文</option>
+                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>绠€浣撲腑鏂?/option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
               </select>
             </div>
             <div class="field">
@@ -951,11 +852,11 @@ function renderAI() {
   `;
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
-  window.AgePet?.mountSetup();
+  // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
 }
 
 // Send one named task to the server and render the response as plain text.
-// 将一个命名任务发送到服务端，并以纯文本安全显示返回结果。
+// 灏嗕竴涓懡鍚嶄换鍔″彂閫佸埌鏈嶅姟绔紝骞朵互绾枃鏈畨鍏ㄦ樉绀鸿繑鍥炵粨鏋溿€?
 async function askCompanion(task, input) {
   const answer = document.querySelector("#ai-answer");
   if (!answer || !input.trim()) return;
@@ -977,7 +878,7 @@ async function askCompanion(task, input) {
     answer.className = "ai-answer";
     answer.textContent = payload.text || "Your companion did not have an answer for that one.";
     // Keep the full answer in the panel, but show a short, safe version above Pet.
-    // 完整答案留在面板中，同时把简短纯文本回复显示在 Pet 头顶。
+    // 瀹屾暣绛旀鐣欏湪闈㈡澘涓紝鍚屾椂鎶婄畝鐭函鏂囨湰鍥炲鏄剧ず鍦?Pet 澶撮《銆?
     window.AgePet?.speak(payload.text, { kind: "ai" });
   } catch (error) {
     if (requestNumber !== aiRequestNumber) return;
@@ -987,50 +888,34 @@ async function askCompanion(task, input) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Router / render                                                      */
+/* Router / render / 璺敱涓庢覆鏌?                                         */
 /* ------------------------------------------------------------------ */
 
 function render() {
-  // Central render function. Every route rebuilds the visible UI from the
-  // current data state. This is the main data-driven pattern in the prototype.
-  // My feature: supporter mode cannot stay on hidden pages such as Social or AI.
-  if (!canAccessRoute(route)) route = "family";
+  // Rebuild the visible UI from the current route and state.
+  if (!validRoutes.has(route)) route = "letter";
   nav.forEach((button) => {
     const buttonRoute = button.dataset.route;
-    // My feature: hide navigation buttons that do not belong to the selected mode.
-    button.classList.toggle("nav-hidden", !canAccessRoute(buttonRoute));
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
-  // My feature: the companion pet is hidden in supporter mode so it does not
-  // cover the Family page.
-  pet.classList.toggle("hidden", userMode === "supporter" || !pagesWithPet.has(route));
+  pet.classList.toggle("hidden", !pagesWithPet.has(route));
 
   if (route === "home") renderHome();
-  if (route === "family") renderFamily();
-  if (route === "manage-family") renderManageFamily();
-  if (route === "friends") renderFriends();
-  if (route === "manage-friends") renderManageFriends();
+  if (route === "letter") renderLetter();
   if (route === "social") renderSocial();
   if (route === "profile") renderProfile();
   if (route === "ai") renderAI();
 }
 
 /* ------------------------------------------------------------------ */
-/* Event handling                                                       */
+/* Event handling / 浜嬩欢澶勭悊                                             */
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
-
-  const userModeTarget = event.target.closest("[data-user-mode]");
-  if (userModeTarget) {
-    // My feature: switch between the older-adult and family/supporter entries.
-    setUserMode(userModeTarget.dataset.userMode);
-    return;
-  }
-
+  // 浜嬩欢濮旀墭鎶婁氦浜掗€昏緫闆嗕腑鍦ㄤ竴涓湴鏂广€?  // 姣忔 render 鍚庝笉鐢ㄩ噸鏂扮粰鎸夐挳缁戝畾鐩戝惉鍣紝鍙渶瑕佺敱 document 缁熶竴鍒ゆ柇鐐瑰嚮浜嗗摢涓?data-* 鍏冪礌銆?
   // Navigation: any element with data-route changes the active screen. The
   // render functions recreate the visible page from the current state object.
   const routeTarget = event.target.closest("[data-route]");
@@ -1051,10 +936,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- AI Companion --------------------------------- */
+  /* ---------------- AI Companion / AI 鍔╂墜 ---------------- */
 
   // Quick questions use the same server task as free-form questions.
-  // 快捷问题和自由输入共用同一个服务端 ask 任务。
+  // 蹇嵎闂鍜岃嚜鐢辫緭鍏ュ叡鐢ㄥ悓涓€涓湇鍔＄ ask 浠诲姟銆?
   const aiQuestion = event.target.closest("[data-ai-question]");
   if (aiQuestion) {
     askCompanion("ask", aiQuestion.dataset.aiQuestion);
@@ -1062,7 +947,7 @@ document.addEventListener("click", (event) => {
   }
 
   // Action buttons provide carefully worded prompts for common use cases.
-  // 操作按钮使用预先写好的提示，降低用户组织问题的负担。
+  // 鎿嶄綔鎸夐挳浣跨敤棰勫厛鍐欏ソ鐨勬彁绀猴紝闄嶄綆鐢ㄦ埛缁勭粐闂鐨勮礋鎷呫€?
   const aiAction = event.target.closest("[data-ai-action]");
   if (aiAction) {
     const action = aiAction.dataset.aiAction;
@@ -1076,124 +961,28 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Family ---------------- */
-
-  // Filter the family board by one family member. This changes only the current
-  // view, so it is stored in frontend state instead of persistent data.
-  const familyFilter = event.target.closest("[data-family-filter]");
-  if (familyFilter) {
-    const id = Number(familyFilter.dataset.familyFilter);
-    state.familyFilterId = state.familyFilterId === id ? null : id;
-    renderFamily();
+  const letterPaper = event.target.closest("[data-letter-paper]");
+  if (letterPaper) {
+    letterDraft.paper = letterPaper.dataset.letterPaper;
+    renderLetter();
     return;
   }
 
-  // Choose who the next family reminder/note will be sent to. This selected id
-  // is later used by handleAction("add-family-note").
-  const pickFamilyMember = event.target.closest("[data-pick-family-member]");
-  if (pickFamilyMember) {
-    state.familyNotePickId = Number(pickFamilyMember.dataset.pickFamilyMember);
-    renderFamily();
+  const letterColor = event.target.closest("[data-letter-color]");
+  if (letterColor) {
+    letterDraft.textColor = letterColor.dataset.letterColor;
+    renderLetter();
     return;
   }
 
-  // Mark one family note as done or not done. Backend mapping:
-  // PATCH /family-notes/:id with { done: true/false }.
-  // In this prototype the note is found in state.familyNotes and updated in
-  // memory, so the change resets when the page is refreshed.
-  const toggleFamilyNote = event.target.closest("[data-toggle-family-note]");
-  if (toggleFamilyNote) {
-    const id = Number(toggleFamilyNote.dataset.toggleFamilyNote);
-    const noteItem = state.familyNotes.find((n) => n.id === id);
-    if (noteItem) noteItem.done = !noteItem.done;
-    renderFamily();
+  const letterFont = event.target.closest("[data-letter-font]");
+  if (letterFont) {
+    letterDraft.font = letterFont.dataset.letterFont;
+    renderLetter();
     return;
   }
 
-  // Mute/unmute one family member. Backend mapping:
-  // PATCH /family-members/:id with { muted: true/false }.
-  const muteFamily = event.target.closest("[data-mute-family]");
-  if (muteFamily) {
-    const id = Number(muteFamily.dataset.muteFamily);
-    const memberItem = getFamilyMember(id);
-    if (memberItem) memberItem.muted = !memberItem.muted;
-    renderManageFamily();
-    return;
-  }
-
-  // Remove a family member and also remove notes that belonged to them.
-  // Backend mapping:
-  // DELETE /family-members/:id, then either cascade-delete their notes in the
-  // database or return updated family member/note lists from the API.
-  const removeFamily = event.target.closest("[data-remove-family]");
-  if (removeFamily) {
-    const id = Number(removeFamily.dataset.removeFamily);
-    state.familyMembers = state.familyMembers.filter((m) => m.id !== id);
-    state.familyNotes = state.familyNotes.filter((n) => n.memberId !== id);
-    if (state.familyFilterId === id) state.familyFilterId = null;
-    if (state.familyNotePickId === id) {
-      state.familyNotePickId = state.familyMembers[0] ? state.familyMembers[0].id : null;
-    }
-    renderManageFamily();
-    return;
-  }
-
-  /* ---------------- Friends ---------------- */
-
-  // Select which friend's shared board is open. This is view state, not
-  // database state, because it only controls what the current user is looking at.
-  const selectFriend = event.target.closest("[data-select-friend]");
-  if (selectFriend) {
-    state.selectedFriendId = Number(selectFriend.dataset.selectFriend);
-    renderFriends();
-    return;
-  }
-
-  // Like/unlike a friend's note. Backend mapping:
-  // POST /friend-notes/:id/like or DELETE /friend-notes/:id/like.
-  // A real backend would normally store who liked the note, not only a boolean.
-  const toggleFriendLike = event.target.closest("[data-toggle-friend-like]");
-  if (toggleFriendLike) {
-    const id = Number(toggleFriendLike.dataset.toggleFriendLike);
-    for (const list of Object.values(state.friendNotes)) {
-      const noteItem = list.find((n) => n.id === id);
-      if (noteItem) {
-        noteItem.liked = !noteItem.liked;
-        break;
-      }
-    }
-    renderFriends();
-    return;
-  }
-
-  // Mute/unmute friend messages. Backend mapping:
-  // PATCH /friends/:id with { muted: true/false }.
-  const muteFriend = event.target.closest("[data-mute-friend]");
-  if (muteFriend) {
-    const id = Number(muteFriend.dataset.muteFriend);
-    const friendItem = getFriend(id);
-    if (friendItem) friendItem.muted = !friendItem.muted;
-    renderManageFriends();
-    return;
-  }
-
-  // Remove a friend and their board data from the current account.
-  // Backend mapping:
-  // DELETE /friends/:id. The server would decide whether messages are deleted
-  // globally or only hidden from this user.
-  const removeFriend = event.target.closest("[data-remove-friend]");
-  if (removeFriend) {
-    const id = Number(removeFriend.dataset.removeFriend);
-    state.friends = state.friends.filter((f) => f.id !== id);
-    delete state.friendNotes[id];
-    if (state.selectedFriendId === id) {
-      state.selectedFriendId = state.friends[0] ? state.friends[0].id : null;
-    }
-    renderManageFriends();
-    return;
-  }
-
-  /* ---------------- Social ---------------- */
+  /* ---------------- Social / 绀句氦鍔熻兘 ---------------- */
 
   // Activity category filter. This uses the activities loaded from data.js and
   // filters them in the browser. If the dataset becomes large, this should move
@@ -1216,6 +1005,7 @@ document.addEventListener("click", (event) => {
   // Save/unsave a community activity. Backend mapping:
   // POST /saved-items with { type: "activity", id } or
   // DELETE /saved-items/activity/:id.
+  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴涓ぞ鍖烘椿鍔ㄣ€傚悗绔槧灏勶細
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
@@ -1228,6 +1018,7 @@ document.addEventListener("click", (event) => {
   // Save/unsave a news item. Backend mapping:
   // POST /saved-items with { type: "news", id } or
   // DELETE /saved-items/news/:id.
+  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴鏉℃柊闂汇€傚悗绔槧灏勶細
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -1243,6 +1034,7 @@ document.addEventListener("click", (event) => {
   // This is one of the clearest "backend interaction" points because a real
   // site would need to save the registration, possibly send organiser details,
   // and respect the profile sharing toggles.
+  // 鍙傚姞鎴栧彇娑堝弬鍔犱竴涓椿鍔ㄣ€傚悗绔槧灏勶細
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
@@ -1252,11 +1044,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Profile ---------------- */
+  /* ---------------- Profile / 涓汉璧勬枡鍔熻兘 ---------------- */
 
   // Toggle profile privacy settings. Backend mapping:
   // PATCH /profile/share-settings with { key, on }.
   // These toggles decide what information may be shared when joining activities.
+  // 鍒囨崲 Profile 闅愮璁剧疆銆傚悗绔槧灏勶細
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -1268,14 +1061,16 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
-    // My feature: update the global text-size class when a Profile button is clicked.
-    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    // My feature / 鎴戠殑鍔熻兘锛歶pdate the global text-size class from Profile.
+    // After changing the level, renderProfile() refreshes only the Profile
+    // controls so the active button reflects the current size.
+    // 鐢ㄦ埛鐐瑰嚮 Profile 閲岀殑瀛楀彿鎸夐挳鍚庯紝鍏堟洿鏂板叏灞€妗ｄ綅鍜?body class锛?    // 鍐嶅埛鏂?Profile 鎺т欢锛岃褰撳墠閫変腑鐨勬寜閽姸鎬佹纭樉绀恒€?    textSizeLevel = Number(textSizeTarget.dataset.textSize);
     applyTextSize();
     renderProfile();
     return;
   }
 
-  /* ---------------- Generic actions ---------------- */
+  /* ---------------- Generic actions / 閫氱敤琛ㄥ崟鍔ㄤ綔 ---------------- */
 
   // Form-style actions are routed through handleAction because they often need
   // to read input values, validate them, create/update data objects, and then
@@ -1287,7 +1082,14 @@ document.addEventListener("click", (event) => {
 });
 
 // Preferences are local UI state and are sent with the next API request.
-// 偏好属于当前页面状态，会随下一次 API 请求一起发送。
+// 鍋忓ソ灞炰簬褰撳墠椤甸潰鐘舵€侊紝浼氶殢涓嬩竴娆?API 璇锋眰涓€璧峰彂閫併€?
+document.addEventListener("input", (event) => {
+  const letterField = event.target.closest("[data-letter-field]");
+  if (!letterField) return;
+  letterDraft[letterField.dataset.letterField] = letterField.value;
+  updateLetterPreview();
+});
+
 document.addEventListener("change", (event) => {
   const preference = event.target.closest("[data-ai-preference]");
   if (preference) {
@@ -1296,7 +1098,7 @@ document.addEventListener("change", (event) => {
   }
 
   // Save one reminder field without rebuilding the page or losing focus.
-  // 修改提醒时只更新对应字段，不重建页面，避免输入框失去焦点。
+  // 淇敼鎻愰啋鏃跺彧鏇存柊瀵瑰簲瀛楁锛屼笉閲嶅缓椤甸潰锛岄伩鍏嶈緭鍏ユ澶卞幓鐒︾偣銆?
   const reminderInput = event.target.closest("[data-ai-reminder]");
   if (!reminderInput) return;
   const settings = window.AgePet?.getReminderSettings?.();
@@ -1307,140 +1109,18 @@ document.addEventListener("change", (event) => {
   window.AgePet?.setReminderSettings(settings);
 });
 
-// Handles actions that are closer to backend transactions: add a note, add a
-// family member, add a friend, post a message, or save profile changes.
-//
-// Current implementation:
-// - Reads values from form inputs in the DOM.
-// - Validates required fields in the browser.
-// - Updates the in-memory `state` object.
-// - Calls a render function so the UI shows the latest data.
-//
-// Future backend implementation:
-// - Replace each direct state mutation with fetch()/axios calls to the server.
-// - Let the backend create ids, validate data, and store records in the database.
-// - After the API responds, update `state` with the returned record/list and
-//   re-render the page. Add loading and error states around each request.
 function handleAction(action) {
-  if (action === "add-family-note") {
-    // Create a new family reminder/note for the selected family member.
-    // Backend mapping:
-    // POST /family-notes with { memberId, text }
-    // Expected response: the created note with server id, date, and done status.
-    const input = document.querySelector("#family-note-input");
-    const text = input ? input.value.trim() : "";
-    if (!text || !state.familyNotePickId) return;
-    state.familyNotes.unshift({
-      id: nextId(),
-      memberId: state.familyNotePickId,
-      // My feature: mark newly created notes as written by the current user.
-      author: "me",
-      text,
-      date: "Today",
-      done: false,
-    });
-    renderFamily();
+  if (action === "download-letter") {
+    downloadLetter();
     return;
   }
 
-  if (action === "focus-family-note") {
-    // Convenience action only: opens the family page and places the cursor in the
-    // note input. No backend or database call is needed.
-    renderFamily();
-    document.querySelector("#family-note-input")?.focus();
-    return;
-  }
-
-  if (action === "mark-all-family-done") {
-    // Marks every visible family note as done. Backend mapping:
-    // PATCH /family-notes/bulk with { done: true }.
-    // A production app should send only the ids the user is allowed to update.
-    state.familyNotes.forEach((n) => (n.done = true));
-    renderFamily();
-    return;
-  }
-
-  if (action === "add-family-member") {
-    // Add a trusted family member. Backend mapping:
-    // POST /family-members with { name, relationship, contact }.
-    // The backend should validate the contact method and send the invite.
-    // The frontend should then show the returned member status, for example
-    // "pending" or "active".
-    const name = document.querySelector("#fam-add-name")?.value.trim();
-    const rel = document.querySelector("#fam-add-rel")?.value.trim();
-    const contact = document.querySelector("#fam-add-contact")?.value.trim();
-    if (!name || !contact) return;
-    const newMember = {
-      id: nextId(),
-      initial: name.charAt(0).toUpperCase(),
-      name,
-      rel: rel || "Family",
-      contact,
-      color: nextColor(state.familyMembers.length),
-      muted: false,
-    };
-    state.familyMembers.push(newMember);
-    state.familyNotePickId = newMember.id;
-    renderManageFamily();
-    return;
-  }
-
-  if (action === "post-friend-note") {
-    // Post a message to the selected friend's shared board.
-    // Backend mapping:
-    // POST /friends/:friendId/notes with { text }.
-    // In a real app this should also include authentication so the server knows
-    // the author is the current logged-in user.
-    const input = document.querySelector("#friend-note-input");
-    const text = input ? input.value.trim() : "";
-    if (!text || !state.selectedFriendId) return;
-    if (!state.friendNotes[state.selectedFriendId]) state.friendNotes[state.selectedFriendId] = [];
-    state.friendNotes[state.selectedFriendId].push({
-      id: nextId(),
-      author: "you",
-      color: "green",
-      text,
-      date: "Today",
-    });
-    renderFriends();
-    return;
-  }
-
-  if (action === "add-friend") {
-    // Add someone the user already knows through email, phone, or invite code.
-    // Backend mapping:
-    // POST /friends/invitations with { name, email, phone, code }.
-    // The server should check that the invite is valid and prevent adding
-    // strangers who are not connected through an allowed contact method.
-    const name = document.querySelector("#friend-add-name")?.value.trim();
-    const email = document.querySelector("#friend-add-email")?.value.trim();
-    const phone = document.querySelector("#friend-add-phone")?.value.trim();
-    const code = document.querySelector("#friend-add-code")?.value.trim();
-    if (!name || (!email && !phone && !code)) return;
-    let contact = "Connected via Invitation code";
-    if (email) contact = "Connected via Email invite";
-    else if (phone) contact = "Connected via Phone invite";
-    const newFriend = {
-      id: nextId(),
-      initial: name.charAt(0).toUpperCase(),
-      name,
-      color: nextColor(state.friends.length),
-      contact,
-      muted: false,
-    };
-    state.friends.push(newFriend);
-    state.friendNotes[newFriend.id] = [];
-    state.selectedFriendId = newFriend.id;
-    renderManageFriends();
+  if (action === "send-letter") {
+    sendLetter();
     return;
   }
 
   if (action === "save-profile") {
-    // Save personal information from the profile form.
-    // Backend mapping:
-    // PATCH /profile with the updated fields below.
-    // A real backend should validate sensitive fields such as age, phone number,
-    // email, emergency contact, and accessibility needs before saving.
     state.profile.fullName = document.querySelector("#profile-full-name")?.value ?? state.profile.fullName;
     state.profile.preferredName = document.querySelector("#profile-preferred-name")?.value ?? state.profile.preferredName;
     state.profile.age = document.querySelector("#profile-age")?.value ?? state.profile.age;
@@ -1451,19 +1131,15 @@ function handleAction(action) {
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
     state.profileJustSaved = true;
     renderProfile();
-    // Temporary success feedback for the prototype. With a backend this should
-    // appear after the API request succeeds, and an error message should be shown
-    // if the save request fails.
     setTimeout(() => {
       state.profileJustSaved = false;
       if (route === "profile") renderProfile();
     }, 2000);
   }
 }
-
 // Floating companion shortcut: opens the AI Companion page. This is navigation
 // only; the current AI page is static and does not call an external AI/backend.
-
+// 鍙充笅瑙掓瀹犲揩鎹峰叆鍙ｏ細鐐瑰嚮鍚庢墦寮€ AI Companion 椤甸潰銆?// 杩欓噷鍙仛鍓嶇瀵艰埅锛涘綋鍓?AI 椤甸潰鏄潤鎬侀〉闈紝涓嶄細璋冪敤澶栭儴 AI 鎴栧悗绔€?
 // Initial render after data.js has populated window.appData.
-render();
+// data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
 loadDatabaseActivities();

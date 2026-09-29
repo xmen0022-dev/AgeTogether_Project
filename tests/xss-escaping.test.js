@@ -1,25 +1,22 @@
-// Renders the real card builders from script.js with hostile input.
-// Notes and member details are typed by the user and the cards are written with
-// innerHTML, so escaping here is what stops that text becoming markup.
-//
+// Renders real builders from script.js with hostile input.
 // The property under test is that no user-supplied "<" survives as a tag.
-// Escaping leaves harmless words like `onerror=` in the text, which is fine:
-// without an unescaped "<" the browser never parses them as an attribute.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
 
-/** Pull one top-level function out of script.js so the shipped code is tested. */
 function extract(name, ...deps) {
   const escape = source.indexOf("function escapeHtml(");
   const escapeEnd = source.indexOf("\n}", escape) + 2;
+  const complete = source.indexOf("function letterLooksComplete(");
+  const completeEnd = complete >= 0 ? source.indexOf("\n}", complete) + 2 : complete;
   const start = source.indexOf(`function ${name}(`);
   const end = source.indexOf("\nfunction ", start + 1);
+  const helper = name === "letterPreviewMarkup" && complete >= 0 ? `\n${source.slice(complete, completeEnd)}` : "";
   return new Function(
     ...deps,
-    `${source.slice(escape, escapeEnd)}\n${source.slice(start, end)}\nreturn ${name};`,
+    `${source.slice(escape, escapeEnd)}${helper}\n${source.slice(start, end)}\nreturn ${name};`,
   );
 }
 
@@ -36,29 +33,18 @@ function assertInert(html, payload) {
   assert.ok(html.includes("&lt;"), `the payload's "<" was not escaped: ${payload}`);
 }
 
-const member = { id: 1, name: "Daniel", initial: "D", rel: "Son", color: "peach", contact: "d@e.com" };
-const note = { id: 1, memberId: 1, text: "hello", date: "Today", done: false };
-
-test("family note text cannot inject markup", () => {
-  const familyNoteCard = extract("familyNoteCard", "getFamilyMember")(() => member);
+test("letter preview text cannot inject markup", () => {
+  const state = { profile: { preferredName: "Me", fullName: "Me" } };
   for (const payload of PAYLOADS) {
-    assertInert(familyNoteCard({ ...note, text: payload }), payload);
-  }
-});
-
-test("a hostile family member name or relationship cannot inject markup", () => {
-  const build = extract("familyNoteCard", "getFamilyMember");
-  for (const payload of PAYLOADS) {
-    const card = build(() => ({ ...member, name: payload, rel: payload }));
-    assertInert(card(note), payload);
-  }
-});
-
-test("friend note text cannot inject markup", () => {
-  const friendNoteCard = extract("friendNoteCard")();
-  const friend = { id: 1, name: "Margaret", initial: "M", color: "peach" };
-  for (const payload of PAYLOADS) {
-    assertInert(friendNoteCard({ id: 1, author: "friend", color: "peach", text: payload, date: "Today" }, friend), payload);
+    const letterDraft = {
+      recipientName: payload,
+      body: payload,
+      paper: "cream",
+      textColor: "ink",
+      font: "serif",
+    };
+    const letterPreviewMarkup = extract("letterPreviewMarkup", "letterDraft", "state")(letterDraft, state);
+    assertInert(letterPreviewMarkup(), payload);
   }
 });
 
@@ -70,9 +56,17 @@ test("profile values cannot break out of the value attribute", () => {
 });
 
 test("ordinary text and emoji still render normally", () => {
-  const familyNoteCard = extract("familyNoteCard", "getFamilyMember")(() => member);
-  const html = familyNoteCard({ ...note, text: "Drink water today 💧" });
+  const letterDraft = {
+    recipientName: "Sophie",
+    body: "Drink water today 💧",
+    paper: "cream",
+    textColor: "ink",
+    font: "serif",
+  };
+  const state = { profile: { preferredName: "Me", fullName: "Me" } };
+  const letterPreviewMarkup = extract("letterPreviewMarkup", "letterDraft", "state")(letterDraft, state);
+  const html = letterPreviewMarkup();
   assert.match(html, /Drink water today 💧/);
-  assert.match(html, /Daniel/);
+  assert.doesNotMatch(html, /Dear Sophie/);
   assert.ok(!html.includes("&amp;#x"), "an emoji was double-encoded");
 });

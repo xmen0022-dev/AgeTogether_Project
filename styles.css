@@ -33,7 +33,12 @@ body {
   line-height: 1.55;
 }
 
-/* My feature: five global text-size levels controlled from the Profile page. */
+/* My feature / 鎴戠殑鍔熻兘锛歠ive global text-size levels controlled from Profile.
+   JavaScript adds one of these classes to <body>. Because most
+   components use rem/em/inherit sizing, changing body font-size scales the
+   interface without needing separate rules for every paragraph or button.
+   JavaScript 浼氱粰 <body> 鍔犱笂鍏朵腑涓€涓?class銆傜敱浜庡ぇ閮ㄥ垎缁勪欢浣跨敤
+   rem/em/inherit 瀛楀彿锛屾敼鍙?body 鐨?font-size 灏辫兘璁╂暣浣撶晫闈竴璧锋斁澶ф垨缂╁皬锛?   涓嶉渶瑕佺粰姣忎釜鏂囧瓧鍏冪礌鍗曠嫭鍐欒鍒欍€?*/
 body.text-size-1 {
   font-size: 14px;
 }
@@ -152,7 +157,10 @@ h3 {
   background: var(--green-soft);
 }
 
-/* My feature: hide unavailable navigation items in supporter mode. */
+/* My feature / 鎴戠殑鍔熻兘锛歨ide unavailable navigation items in supporter mode.
+   Supporter mode should only expose the smaller testing workflow, so
+   JavaScript toggles this class on buttons whose routes are not allowed.
+   瀹朵汉/鏀寔鑰呯鍙睍绀虹畝鍖栧悗鐨勬祴璇曟祦绋嬨€侸avaScript 浼氱粰涓嶅彲璁块棶椤甸潰鐨?   瀵艰埅鎸夐挳鍔犱笂杩欎釜 class锛岃瀹冧滑浠庡鑸爮涓殣钘忋€?*/
 .top-nav button.nav-hidden {
   display: none;
 }
@@ -204,38 +212,6 @@ h3 {
   padding: 34px 0 70px;
 }
 
-/* My feature: Home entry switcher for older adults and family/supporters. */
-.role-entry {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.role-entry button {
-  min-height: 72px;
-  display: grid;
-  gap: 4px;
-  border: 2px solid var(--line);
-  border-radius: 8px;
-  padding: 14px 18px;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.88);
-  text-align: left;
-  cursor: pointer;
-  box-shadow: var(--soft-shadow);
-}
-
-.role-entry button.active {
-  border-color: var(--green);
-  background: var(--green-soft);
-}
-
-.role-entry span {
-  color: var(--muted);
-}
-
-/* My feature: compact Home notifications for Family, Friend, and Social. */
 .home-notifications {
   display: flex;
   justify-content: flex-end;
@@ -418,14 +394,9 @@ h3 {
   line-height: 1.5;
 }
 
-.family-card {
-  border-color: var(--peach);
-  background: var(--peach-soft);
-}
-
-.friends-card {
-  border-color: var(--green);
-  background: var(--green-soft);
+.letter-card {
+  border-color: #c9a66b;
+  background: #fff2d8;
 }
 
 .social-card {
@@ -495,26 +466,6 @@ h3 {
   margin-bottom: 30px;
 }
 
-.family-toolbar,
-.friends-toolbar {
-  align-items: flex-end;
-}
-
-/* My feature: keep Family/Friends toolbars readable when text size increases. */
-.family-toolbar .chips,
-.friends-toolbar .chips {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.family-toolbar .outline-btn,
-.friends-toolbar .outline-btn {
-  flex: 0 0 auto;
-  max-width: 210px;
-  white-space: normal;
-  line-height: 1.25;
-}
-
 .tabs,
 .chips {
   display: flex;
@@ -541,7 +492,7 @@ h3 {
 .pill {
   display: inline-flex;
   align-items: center;
-  /* My feature: allow long names and relationships to wrap instead of overflowing. */
+  /* My feature: allow long chip labels to wrap when text size changes. */
   flex-wrap: wrap;
   gap: 7px;
   height: auto;
@@ -621,36 +572,6 @@ h3 {
   color: var(--muted);
 }
 
-.friend-pick {
-  min-width: 216px;
-  display: grid;
-  grid-template-columns: 56px 1fr 12px;
-  align-items: center;
-  gap: 16px;
-  border: 2px solid var(--line);
-  border-radius: 20px;
-  padding: 16px 24px;
-  background: var(--surface);
-  box-shadow: var(--soft-shadow);
-  cursor: pointer;
-}
-
-.friend-pick.active {
-  border-color: var(--peach);
-  background: #fffaf1;
-}
-
-.friend-pick h3 {
-  margin-bottom: 2px;
-  font-family: Aptos, "Segoe UI", sans-serif;
-  font-size: 21px;
-}
-
-.friend-pick p {
-  margin: 0;
-  font-size: 13px;
-}
-
 .status-dot {
   width: 10px;
   height: 10px;
@@ -660,185 +581,11 @@ h3 {
 
 .board,
 .panel,
-.member,
 .activity-card,
 .news-card {
   border: 1px solid var(--line);
   background: var(--surface-strong);
   box-shadow: var(--shadow);
-}
-
-.board {
-  border-radius: 24px;
-  overflow: hidden;
-}
-
-.family-board {
-  border: 3px solid #dfbd6c;
-  background: #f6ead0;
-}
-
-.board-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 28px 32px;
-  border-bottom: 1px solid #eadfce;
-  background: rgba(255, 253, 248, 0.76);
-}
-
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.board-title h2 {
-  margin-bottom: 6px;
-}
-
-.privacy-copy {
-  text-align: right;
-  font-size: 0.82em;
-}
-
-/* My feature: notes use responsive columns so large text does not break cards. */
-.note-area {
-  min-height: 442px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  align-content: start;
-  gap: 26px;
-  padding: 36px 40px;
-  background-image: repeating-linear-gradient(to bottom, transparent, transparent 39px, rgba(217, 206, 191, 0.38) 40px);
-}
-
-.family-note-area {
-  min-height: 410px;
-}
-
-.friend-note-area {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  background-color: #fffdf8;
-}
-
-/* My feature: wider note cards at the two largest text-size levels. */
-body.text-size-4 .note-area,
-body.text-size-5 .note-area {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-}
-
-.note {
-  position: relative;
-  min-height: 144px;
-  padding: 24px 18px 18px;
-  border: 1px solid rgba(80, 60, 40, 0.12);
-  border-radius: 14px;
-  box-shadow: var(--soft-shadow);
-}
-
-.note::before {
-  content: "";
-  width: 13px;
-  height: 13px;
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: #c19b35;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.22);
-}
-
-.note.peach {
-  background: #fde6dc;
-}
-
-.note.green {
-  background: #e5f4ec;
-}
-
-.note.yellow {
-  background: #fff4bf;
-}
-
-.note.blue {
-  background: #e5f3fc;
-}
-
-.note.purple {
-  background: var(--purple-soft);
-}
-
-.note.done {
-  opacity: 0.58;
-}
-
-.note.done p {
-  text-decoration: line-through;
-}
-
-.note-head {
-  display: flex;
-  /* My feature: let note author, relationship, and date wrap neatly. */
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-  color: var(--muted);
-  font-size: 0.82em;
-}
-
-.note-head strong {
-  display: inline-flex;
-  align-items: center;
-  flex: 1 1 160px;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--ink);
-  min-width: 0;
-}
-
-.note p {
-  margin-bottom: 18px;
-  font-size: 1.06em;
-  line-height: 1.45;
-  /* My feature: prevent long user text from spilling outside note cards. */
-  overflow-wrap: anywhere;
-}
-
-.note-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  padding: 0;
-  color: var(--muted);
-  background: none;
-  font-size: 0.82em;
-  cursor: pointer;
-}
-
-.message-panel {
-  padding: 28px 32px 34px;
-  border-top: 1px solid var(--line);
-  background: white;
-}
-
-.message-form {
-  display: grid;
-  grid-template-columns: 1fr 180px;
-  gap: 16px;
-  align-items: end;
-}
-
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-top: 30px;
 }
 
 .panel {
@@ -873,6 +620,246 @@ select:focus {
 textarea {
   min-height: 104px;
   resize: vertical;
+}
+
+.letter-shell {
+  display: grid;
+  gap: 22px;
+}
+
+.letter-format-menu {
+  position: sticky;
+  top: 137px;
+  z-index: 12;
+  border: 2px solid rgba(106, 162, 122, 0.42);
+  border-radius: 20px;
+  padding: 0;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 18px 38px rgba(50, 39, 27, 0.14);
+  backdrop-filter: blur(14px);
+}
+
+.letter-format-menu summary {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  color: #193047;
+  cursor: pointer;
+  list-style: none;
+}
+
+.letter-format-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.letter-format-menu summary::after {
+  content: "⌄";
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: white;
+  color: #3f7d58;
+  font-size: 22px;
+  line-height: 1;
+  transition: rotate 160ms ease;
+}
+
+.letter-format-menu[open] summary::after {
+  rotate: 180deg;
+}
+
+.format-menu-title {
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.format-menu-current {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.letter-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.letter-editor,
+.letter-preview-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid var(--line);
+  box-shadow: var(--soft-shadow);
+}
+
+.letter-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.letter-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #fff2d8;
+  border: 2px solid #c9a66b;
+  font-size: 30px;
+}
+
+.compact-fields {
+  gap: 18px;
+  margin-bottom: 0;
+}
+
+.letter-body-input {
+  min-height: 220px;
+  line-height: 1.55;
+}
+
+.letter-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 18px;
+  border-top: 1px solid rgba(221, 211, 198, 0.85);
+  padding: 18px 22px 22px;
+}
+
+.letter-options h3 {
+  margin: 0 0 10px;
+}
+
+.letter-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.letter-swatch,
+.letter-font-button {
+  min-height: 46px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 0 16px;
+  color: var(--ink);
+  background: white;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.letter-swatch.active,
+.letter-font-button.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(107, 166, 123, 0.18);
+}
+
+.paper-cream,
+.letter-paper-cream {
+  background: #fff5dc;
+}
+
+.paper-rose,
+.letter-paper-rose {
+  background: #ffe7e0;
+}
+
+.paper-sky,
+.letter-paper-sky {
+  background: #e4f3ff;
+}
+
+.paper-mint,
+.letter-paper-mint {
+  background: #e8f7ed;
+}
+
+.paper-lavender,
+.letter-paper-lavender {
+  background: #f0e9ff;
+}
+
+.paper-white,
+.letter-paper-white {
+  background: #fffdf7;
+}
+
+.ink-ink,
+.letter-ink-ink {
+  color: #142331;
+}
+
+.ink-navy,
+.letter-ink-navy {
+  color: #163f73;
+}
+
+.ink-forest,
+.letter-ink-forest {
+  color: #27623d;
+}
+
+.ink-plum,
+.letter-ink-plum {
+  color: #65305f;
+}
+
+.ink-brown,
+.letter-ink-brown {
+  color: #69462b;
+}
+
+.letter-font-serif {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.letter-font-sans {
+  font-family: Aptos, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+.letter-font-hand {
+  font-family: "Comic Sans MS", "Segoe Print", cursive;
+}
+
+.letter-paper {
+  min-height: 520px;
+  border: 2px solid rgba(95, 74, 48, 0.2);
+  border-radius: 18px;
+  padding: 38px;
+  box-shadow: 0 24px 42px rgba(70, 55, 36, 0.16);
+  line-height: 1.7;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.letter-paper p {
+  margin: 0 0 24px;
+}
+
+.letter-date {
+  text-align: right;
+  opacity: 0.76;
+}
+
+.letter-body-preview {
+  white-space: normal;
+}
+
+.letter-signoff {
+  margin-top: 42px;
+}
+
+.letter-actions {
+  margin-top: 24px;
 }
 
 .primary,
@@ -929,18 +916,6 @@ textarea {
   font-weight: 800;
 }
 
-.message-action {
-  border-color: var(--green);
-  background: var(--green-soft);
-  color: #346f44;
-}
-
-.done-action {
-  border-color: var(--peach);
-  background: var(--peach-soft);
-  color: #913f21;
-}
-
 .notice {
   margin: 24px 0 36px;
   border: 1px solid var(--green);
@@ -992,34 +967,6 @@ textarea {
   display: block;
   margin: -4px 0 10px;
   color: var(--muted);
-}
-
-.member-list h2 {
-  margin-bottom: 6px;
-}
-
-.member {
-  display: grid;
-  grid-template-columns: 58px 1fr auto auto auto;
-  align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-  border-radius: 18px;
-  padding: 20px 24px;
-}
-
-.member.muted {
-  opacity: 0.55;
-}
-
-.member h3 {
-  margin-bottom: 2px;
-  font-size: 21px;
-}
-
-.member p {
-  margin: 0;
-  font-size: 14px;
 }
 
 .small-badge {
@@ -1194,7 +1141,11 @@ textarea {
   margin-top: 26px;
 }
 
-/* My feature: Profile controls for changing the global text size. */
+/* My feature / 鎴戠殑鍔熻兘锛歅rofile controls for changing the global text size.
+   These buttons are grouped and wrapped so all five levels remain usable
+   on both desktop and narrow screens.
+   杩欓噷鎺у埗 Profile 椤甸潰閲岀殑浜斾釜瀛楀彿鎸夐挳銆備娇鐢?flex-wrap 鍙互淇濊瘉妗岄潰绔拰
+   灏忓睆骞曚笂閮借兘姝ｅ父鎺掑垪锛屼笉浼氬洜涓烘寜閽お澶氳€屾孩鍑恒€?*/
 .text-size-picker {
   display: flex;
   flex-wrap: wrap;
@@ -1359,7 +1310,7 @@ textarea {
 }
 
 /* AI answer feedback: keep the response visually separate and readable. */
-/* AI 答案反馈：让返回内容独立显示，并保持清晰易读。 */
+/* AI 绛旀鍙嶉锛氳杩斿洖鍐呭鐙珛鏄剧ず锛屽苟淇濇寔娓呮櫚鏄撹銆?*/
 .ai-answer {
   min-height: 24px;
   margin: 18px 0 0;
@@ -1585,14 +1536,9 @@ textarea {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .note-area,
-  .friend-note-area,
+  .letter-layout,
   .social-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .member {
-    grid-template-columns: 58px 1fr auto;
   }
 }
 
@@ -1624,20 +1570,43 @@ textarea {
     padding: 24px 0 54px;
   }
 
-  /* My feature: stack the two entry buttons on narrow screens. */
-  .role-entry {
-    grid-template-columns: 1fr;
-  }
-
-  /* My feature: keep the three Home notification buttons evenly spaced on mobile. */
+  /* My feature: keep Home notification buttons evenly spaced on mobile. */
   .home-notifications {
     justify-content: stretch;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .page-head {
     padding: 20px 24px 16px;
+  }
+
+  .letter-format-menu {
+    top: 12px;
+  }
+
+  .letter-format-menu summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .letter-format-menu summary::after {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+  }
+
+  .letter-options {
+    grid-template-columns: 1fr;
+  }
+
+  .letter-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .letter-paper {
+    min-height: 420px;
+    padding: 28px;
   }
 
   .hero-copy {
@@ -1677,27 +1646,17 @@ textarea {
   .toolbar,
   .board-title,
   .title-row,
-  .message-form {
+  .toolbar {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .note-area,
-  .friend-note-area,
   .social-grid,
   .two-col,
   .form-grid,
   .profile-grid,
   .wide-actions {
     grid-template-columns: 1fr;
-  }
-
-  .member {
-    grid-template-columns: 58px 1fr;
-  }
-
-  .privacy-copy {
-    text-align: left;
   }
 }
 /* ------------------------------------------------------------------ */
@@ -1911,7 +1870,7 @@ textarea {
 }
 
 .pet-bond-track span {
-  /* Animate the friendship bar when the bond score changes. */
+  /* Animate the companion bond bar when the score changes. */
   height: 100%;
   display: block;
   border-radius: 999px;

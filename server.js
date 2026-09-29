@@ -37,17 +37,19 @@ function loadEnvFile() {
 loadEnvFile();
 
 // Site-wide password protection for the review/testing build.
+// 用于测试和评分阶段的整站密码保护。
 // Default credentials are intentionally simple because they are shared with
 // teaching staff in the team information document.
+// 默认账号密码故意设置得简单，方便写进 team information document 并给老师测试。
 const SITE_USERNAME = process.env.SITE_USERNAME || "agetogether";
 const SITE_PASSWORD = process.env.SITE_PASSWORD || "fit5120";
 
 // DeepSeek is called through its OpenAI-compatible HTTP endpoint, so the
 // server does not need a provider-specific SDK in the browser or frontend.
-// 通过 DeepSeek 的兼容 HTTP 接口调用模型，API Key 永远不会进入浏览器。
+// DeepSeek 通过兼容 OpenAI 的 HTTP 接口调用，API Key 只留在服务器端，不进入浏览器。
 // Render currently stores this service's key as `deepseekAgeV1`; the standard
 // name remains the preferred option for local development and future deploys.
-// Render 当前将该服务的 Key 命名为 `deepseekAgeV1`；标准名称优先用于本地和未来部署。
+// Render 当前把这个服务的 key 命名为 `deepseekAgeV1`；本地和后续部署仍优先使用标准名。
 function getDeepSeekApiKey(env = process.env) {
   return env.DEEPSEEK_API_KEY || env.deepseekAgeV1 || "";
 }
@@ -56,7 +58,12 @@ const DEEPSEEK_API_KEY = getDeepSeekApiKey();
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 const hasApiKey = Boolean(DEEPSEEK_API_KEY);
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const EMAIL_FROM = process.env.EMAIL_FROM || "AgeTogether <onboarding@resend.dev>";
+const hasEmailKey = Boolean(RESEND_API_KEY);
 const { Pool } = pg;
+// Database connection is enabled only when DATABASE_URL exists.
+// 只有配置了 DATABASE_URL 时才连接 PostgreSQL；没有配置时仍可运行静态原型和非数据库功能。
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 const db = hasDatabase
   ? new Pool({
@@ -152,7 +159,6 @@ const STYLES = {
 
 /**
  * Validate presentation preferences without trusting arbitrary prompt text.
- * 验证用户的语言和表达偏好，只允许预先定义的选项。
  */
 function normalizePreferences(language, style) {
   return {
@@ -163,7 +169,7 @@ function normalizePreferences(language, style) {
 
 /**
  * Combine shared safety rules, the task prompt, and bounded style instructions.
- * 组合公共安全规则、具体任务规则以及受限制的语言/风格规则。
+ * 组合公共安全规则、具体任务提示，以及受限制的语言和风格规则。
  */
 function buildSystemPrompt(taskName, language, style) {
   const task = TASKS[taskName];
@@ -182,7 +188,7 @@ async function runTask(taskName, input, preferences = {}) {
   const task = TASKS[taskName];
   const prompt = buildSystemPrompt(taskName, preferences.language, preferences.style);
 
-  // DeepSeek's compatible endpoint uses the standard chat-completions shape.
+  // DeepSeek compatible endpoint uses the standard chat-completions shape.
   // DeepSeek 兼容接口使用标准的 chat completions 请求格式。
   const response = await fetch(`${DEEPSEEK_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -267,11 +273,15 @@ function sendJson(res, status, payload) {
 }
 
 function checkBasicAuth(req, res) {
+  // Compare the browser's Basic Auth header with the configured review account.
+  // 对比浏览器传来的 Basic Auth header 和服务器配置的测试账号密码。
   const header = req.headers.authorization || "";
   const expected = `Basic ${Buffer.from(`${SITE_USERNAME}:${SITE_PASSWORD}`).toString("base64")}`;
 
   if (header === expected) return true;
 
+  // Ask the browser to show its built-in username/password dialog.
+  // 认证失败时返回 401，让浏览器弹出自带的账号密码输入框。
   res.writeHead(401, {
     "WWW-Authenticate": 'Basic realm="AgeTogether"',
     "Content-Type": "text/plain; charset=utf-8",
@@ -324,12 +334,14 @@ async function serveStatic(req, res, pathname) {
   const fallbackPath = path.join(ROOT, "index.html");
 
   // Reject anything that escapes the project directory.
+  // 拒绝访问项目目录外的文件，避免通过路径跳转读取本机其他文件。
   if (!filePath.startsWith(ROOT + path.sep) && filePath !== path.join(ROOT, "index.html")) {
     sendJson(res, 403, { error: "Forbidden" });
     return;
   }
 
   // The API key lives in .env and the saved state is not part of the site.
+  // .env 里有密钥，server-state.json 是服务器保存的数据，这两个文件不能被浏览器下载。
   const basename = path.basename(filePath);
   if (basename === ".env" || basename === "server-state.json") {
     sendJson(res, 403, { error: "Forbidden" });
@@ -351,6 +363,9 @@ async function serveStatic(req, res, pathname) {
       return;
     }
 
+    // Extensionless paths fall back to index.html so the single-page prototype
+    // can keep working when users refresh a frontend route.
+    // 没有扩展名的路径回退到 index.html，让单页原型在刷新前端页面时不会直接 404。
     const file = await readFile(fallbackPath);
     res.writeHead(200, {
       "Content-Type": MIME_TYPES[".html"],
@@ -422,6 +437,135 @@ async function handleAsk(req, res) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+const LETTER_PAPER_STYLES = {
+  cream: "#fff5dc",
+  rose: "#ffe7e0",
+  sky: "#e4f3ff",
+  mint: "#e8f7ed",
+  lavender: "#f0e9ff",
+  white: "#fffdf7",
+};
+
+const LETTER_TEXT_STYLES = {
+  ink: "#142331",
+  navy: "#163f73",
+  forest: "#27623d",
+  plum: "#65305f",
+  brown: "#69462b",
+};
+
+const LETTER_FONT_STYLES = {
+  serif: "Georgia, 'Times New Roman', serif",
+  sans: "Arial, 'Segoe UI', sans-serif",
+  hand: "'Comic Sans MS', 'Segoe Print', cursive",
+};
+
+function allowedLetterStyle(map, key, fallback) {
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : map[fallback];
+}
+
+function buildLetterEmailHtml({ body, date, paper, textColor, font }) {
+  const paperColor = allowedLetterStyle(LETTER_PAPER_STYLES, paper, "cream");
+  const inkColor = allowedLetterStyle(LETTER_TEXT_STYLES, textColor, "ink");
+  const fontFamily = allowedLetterStyle(LETTER_FONT_STYLES, font, "serif");
+  const bodyHtml = escapeHtml(body).replace(/\n/g, "<br />");
+
+  return `<!doctype html>
+<html>
+<body style="margin:0; padding:28px; background:#f7f1e8;">
+  <article style="max-width:720px; margin:0 auto; border:2px solid rgba(95,74,48,0.2); border-radius:18px; padding:38px; background:${paperColor}; color:${inkColor}; font-family:${fontFamily}; font-size:20px; line-height:1.7; box-shadow:0 16px 32px rgba(70,55,36,0.12);">
+    <p style="margin:0 0 24px; text-align:right; opacity:0.76;">${escapeHtml(date)}</p>
+    <p style="margin:0 0 24px;">${bodyHtml}</p>
+  </article>
+</body>
+</html>`;
+}
+
+async function handleSendLetter(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Use POST." });
+    return;
+  }
+
+  if (!hasEmailKey) {
+    sendJson(res, 503, { error: "No RESEND_API_KEY set. Add it to .env and restart the server." });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Expected a JSON body." });
+    return;
+  }
+
+  const to = String(payload?.to || "").trim();
+  const subject = String(payload?.subject || "A note from AgeTogether").trim().slice(0, 180);
+  const text = String(payload?.text || "").trim();
+  const letter = payload?.letter || {};
+  const body = String(letter.body || text).trim();
+  const date = String(letter.date || new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })).trim();
+
+  if (!isValidEmail(to)) {
+    sendJson(res, 400, { error: "Please enter a valid recipient email address." });
+    return;
+  }
+
+  if (!text) {
+    sendJson(res, 400, { error: "Please write a message before sending." });
+    return;
+  }
+
+  if (text.length > 5000) {
+    sendJson(res, 400, { error: "This letter is too long to send. Please shorten it first." });
+    return;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to,
+        subject,
+        text,
+        html: buildLetterEmailHtml({
+          body,
+          date,
+          paper: letter.paper,
+          textColor: letter.textColor,
+          font: letter.font,
+        }),
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("[send-letter]", result);
+      sendJson(res, 502, { error: result?.message || "Email could not be sent." });
+      return;
+    }
+
+    sendJson(res, 200, { sent: true, id: result?.id || null });
+  } catch (error) {
+    console.error("[send-letter]", error?.message ?? error);
+    sendJson(res, 503, { error: "Email service is not available right now." });
+  }
+}
+
 async function handleState(req, res) {
   if (req.method === "GET") {
     try {
@@ -463,6 +607,7 @@ async function handleDiscoveryPlaces(req, res, searchParams) {
 
   // Cap raised from 100 to 250 so the frontend map can request every Tier 1
   // discovery place (115 rows as of the current dataset) in one call.
+  // 上限从 100 提到 250，方便前端地图一次取回当前数据集里的所有 Tier 1 地点。
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 250);
 
   try {
@@ -508,6 +653,7 @@ async function handleNearbyPlaces(req, res, searchParams) {
   const lat = Number(searchParams.get("lat"));
   const lng = Number(searchParams.get("lng"));
   // Cap raised from 100 to 250 for the same reason as handleDiscoveryPlaces above.
+  // 这里也使用 250 的上限，保持附近地点接口和全量地点接口一致。
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 24, 1), 250);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -554,16 +700,22 @@ async function handleNearbyPlaces(req, res, searchParams) {
 const server = createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
 
+  // Health check for Render. This must stay outside Basic Auth so Render can
+  // confirm the instance is live without needing the review-site password.
+  // Render 健康检查入口。这里不能要求 Basic Auth，否则 Render 可能一直停在 loading 页面。
   if (pathname === "/healthz") {
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("ok");
     return;
   }
 
+  // Require the review password before serving static files or API responses.
+  // 静态页面和 API 都先经过密码保护，确保测试网站不是完全公开访问。
   if (!checkBasicAuth(req, res)) return;
 
   try {
     if (pathname === "/api/ask" && req.method === "POST") return await handleAsk(req, res);
+    if (pathname === "/api/send-letter") return await handleSendLetter(req, res);
     if (pathname === "/api/state") return await handleState(req, res);
     if (pathname === "/api/discovery-places") return await handleDiscoveryPlaces(req, res, searchParams);
     if (pathname === "/api/nearby-places") return await handleNearbyPlaces(req, res, searchParams);
