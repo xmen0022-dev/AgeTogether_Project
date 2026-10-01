@@ -86,11 +86,15 @@ function applyTextSize() {
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
-function activityIcon(category) {
+function activityIcon(category, title = "") {
   // Use numeric HTML entities for controlled activity icons.
   // This avoids broken emoji encoding in the Social cards.
-  const value = `${category || ""}`.toLowerCase();
+  const value = `${category || ""} ${title || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
+  if (value.includes("theatre") || value.includes("theater") || value.includes("athenaeum")) return "&#x1F3AD;";
+  if (value.includes("museum") || value.includes("gallery") || value.includes("history")) return "&#x1F3DB;";
+  if (value.includes("visitor") || value.includes("information") || value.includes("booth")) return "&#x2139;";
+  if (value.includes("community") || value.includes("assembly") || value.includes("centre") || value.includes("center")) return "&#x1F91D;";
   if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
   if (value.includes("health") || value.includes("medical")) return "&#x267F;";
   if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
@@ -138,7 +142,7 @@ function mapDiscoveryPlace(place) {
   return {
     id: `place-${place.place_id}`,
     category,
-    icon: activityIcon(category),
+    icon: activityIcon(category, place.feature_name),
     title: place.feature_name,
     location: `${place.theme}${distance}`,
     date: "Community place",

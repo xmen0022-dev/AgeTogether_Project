@@ -628,15 +628,11 @@ textarea {
 }
 
 .letter-format-menu {
-  position: sticky;
-  top: 137px;
-  z-index: 12;
   border: 2px solid rgba(106, 162, 122, 0.42);
   border-radius: 20px;
   padding: 0;
   background: rgba(255, 253, 248, 0.96);
-  box-shadow: 0 18px 38px rgba(50, 39, 27, 0.14);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--soft-shadow);
 }
 
 .letter-format-menu summary {
@@ -1607,10 +1603,6 @@ textarea {
 
   .page-head {
     padding: 20px 24px 16px;
-  }
-
-  .letter-format-menu {
-    top: 12px;
   }
 
   .letter-format-menu summary {
