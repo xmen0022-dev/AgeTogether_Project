@@ -18,17 +18,21 @@ let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
 const state = JSON.parse(JSON.stringify(appData.state || {}));
 const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
-let activitySelections = window.ActivityCheck.readSelections(localStorage);
-state.activities = window.ActivityCheck.restoreSelections(state.activities, activitySelections);
-let activityPreferences = loadActivityPreferences();
-let activityStorageMessage = '';
-let letterRewrite = { body: '', original: '', status: '', request: 0 };
-let paperAudioContext = null;
-let letterSoundEnabled = true;
-try { letterSoundEnabled = localStorage.getItem('agetogether.letter-sound') !== 'off'; } catch { /* Default to a quiet sound. */ }
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
+
+const staticNewsItems = JSON.parse(JSON.stringify(state.newsItems || []));
+let newsSource = "static";
+let newsLoading = false;
+let newsError = "";
+
+// Defaults to Melbourne CBD until the user opts in to sharing their real
+// location. Nothing is requested automatically - see the "Use my location"
+// button in the Social location card.
+let userLocation = { lat: -37.8136, lng: 144.9631, label: "Melbourne CBD, VIC" };
+let locationStatus = "default"; // "default" | "locating" | "granted" | "denied" | "error"
+let locationMessage = "";
 const letterDraft = {
   recipientName: "",
   recipientEmail: "",
@@ -75,7 +79,6 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  document.body.classList.remove('text-size-1', 'text-size-2', 'text-size-3', 'text-size-4', 'text-size-5');
   // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
@@ -131,14 +134,13 @@ function homeNotifications() {
 function mapDiscoveryPlace(place) {
   const category = place.sub_theme || place.theme || "Community place";
   // Use an ASCII separator so place distances render consistently.
-  const distance = place.distance_km != null ? ` - ${place.distance_km} km away` : "";
+  const distance = place.distance_km ? ` - ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
     category,
     icon: activityIcon(category),
     title: place.feature_name,
     location: `${place.theme}${distance}`,
-    distanceKm: place.distance_km,
     date: "Community place",
     price: "Details not confirmed",
     copy: place.relevance_reason || "A nearby place from the City of Melbourne discovery dataset.",
@@ -154,7 +156,7 @@ function mapDiscoveryPlace(place) {
   };
 }
 
-async function loadDatabaseActivities() {
+async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation.lng) {
   activitiesLoading = true;
   activitiesError = "";
   if (route === "social") renderSocial();
@@ -163,22 +165,145 @@ async function loadDatabaseActivities() {
     // limit=200 comfortably covers all Tier 1 discovery places currently in
     // the database (115) so the Activities map shows everything, not just
     // the closest handful. The server still enforces its own hard cap.
-    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=200");
+    const response = await fetch(`/api/nearby-places?lat=${lat}&lng=${lng}&limit=200`);
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
     if (!places.length) throw new Error("Database API returned no places");
-    state.activities = window.ActivityCheck.restoreSelections(places.map(mapDiscoveryPlace), activitySelections);
+    state.activities = places.map(mapDiscoveryPlace);
     activitiesSource = "database";
   } catch (error) {
     console.warn("[activities] using static fallback:", error?.message ?? error);
-    state.activities = window.ActivityCheck.restoreSelections(staticActivities, activitySelections);
+    state.activities = staticActivities;
     activitiesSource = "static";
     activitiesError = "Database places are unavailable, so static sample activities are shown.";
   } finally {
     activitiesLoading = false;
     if (route === "social") renderSocial();
   }
+}
+
+function newsIcon(category) {
+  // Map an SBS RSS category to a controlled icon. Same approach as
+  // activityIcon() - numeric HTML entities, so encoding stays predictable.
+  const value = `${category || ""}`.toLowerCase();
+  if (value.includes("health") || value.includes("covid")) return "&#x1FA7A;";
+  if (value.includes("politic")) return "&#x1F3DB;";
+  if (value.includes("finance")) return "&#x1F4B0;";
+  if (value.includes("life")) return "&#x1F91D;";
+  return "&#x1F4F0;";
+}
+
+function mapNewsArticle(article) {
+  // The CSV's first listed category becomes the badge tag; categories are
+  // semicolon-separated (e.g. "Australia; Health; Life").
+  const primaryCategory = (article.category || "").split(";")[0].trim() || "News";
+  return {
+    id: `news-${article.article_url || article.title}`,
+    icon: newsIcon(article.category),
+    tag: primaryCategory,
+    title: article.title,
+    copy: article.summary || "",
+    source: article.source || "SBS News",
+    publishedDate: article.published_date || "",
+    articleUrl: article.article_url || "",
+    saved: false,
+  };
+}
+
+async function loadNewsFeed() {
+  newsLoading = true;
+  newsError = "";
+  if (route === "social") renderSocial();
+
+  try {
+    const response = await fetch("/api/news");
+    if (!response.ok) throw new Error(`News API returned ${response.status}`);
+    const payload = await response.json();
+    const articles = Array.isArray(payload.articles) ? payload.articles : [];
+    if (!articles.length) throw new Error("News API returned no articles");
+    state.newsItems = articles.map(mapNewsArticle);
+    newsSource = "feed";
+  } catch (error) {
+    console.warn("[news] using static fallback:", error?.message ?? error);
+    state.newsItems = staticNewsItems;
+    newsSource = "static";
+    newsError = "The live news snapshot is unavailable, so sample headlines are shown.";
+  } finally {
+    newsLoading = false;
+    if (route === "social") renderSocial();
+  }
+}
+
+function formatNewsDate(isoDate) {
+  if (!isoDate) return "";
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const AU_STATE_ABBREVIATIONS = {
+  Victoria: "VIC",
+  "New South Wales": "NSW",
+  Queensland: "QLD",
+  "South Australia": "SA",
+  "Western Australia": "WA",
+  Tasmania: "TAS",
+  "Northern Territory": "NT",
+  "Australian Capital Territory": "ACT",
+};
+
+async function useMyLocation() {
+  if (!navigator.geolocation) {
+    locationStatus = "error";
+    locationMessage = "This browser doesn't support location access.";
+    if (route === "social") renderSocial();
+    return;
+  }
+
+  locationStatus = "locating";
+  locationMessage = "";
+  if (route === "social") renderSocial();
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      userLocation = { lat, lng, label: "Locating your suburb..." };
+      locationStatus = "granted";
+      if (route === "social") renderSocial();
+
+      // Reverse-geocode with Nominatim (OpenStreetMap) - same data source as
+      // the map tiles, so no separate API key is needed. If this fails we
+      // still keep the real coordinates and just show them directly.
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+          { headers: { Accept: "application/json" } },
+        );
+        if (!response.ok) throw new Error(`Reverse geocode returned ${response.status}`);
+        const place = await response.json();
+        const address = place.address || {};
+        const suburb = address.suburb || address.city_district || address.town || address.village || address.city;
+        const stateName = address.state ? AU_STATE_ABBREVIATIONS[address.state] || address.state : "";
+        userLocation.label = [suburb, stateName].filter(Boolean).join(", ") || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+      } catch (error) {
+        console.warn("[location] reverse geocode failed:", error?.message ?? error);
+        userLocation.label = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+      }
+
+      await loadDatabaseActivities(lat, lng);
+    },
+    (error) => {
+      locationStatus = "denied";
+      locationMessage =
+        error.code === error.PERMISSION_DENIED
+          ? "Location access was declined, so Melbourne CBD is shown instead."
+          : "Couldn't get your location right now, so Melbourne CBD is shown instead.";
+      if (route === "social") renderSocial();
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -329,13 +454,10 @@ function renderLetter() {
             <textarea id="letter-body" class="letter-body-input" data-letter-field="body" placeholder="Write your letter here...">${escapeHtml(letterDraft.body)}</textarea>
           </div>
 
-          ${letterWritingTools()}
           <div class="wide-actions letter-actions">
             <button class="primary" data-action="download-letter">Download letter</button>
             <button class="blue-btn" data-action="send-letter">Send by email</button>
           </div>
-          <label class="letter-sound-toggle"><input type="checkbox" data-letter-sound ${letterSoundEnabled ? 'checked' : ''} /> Play a gentle paper sound when sent</label>
-          <p id="letter-send-status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel letter-preview-panel">
@@ -448,51 +570,6 @@ function downloadLetter() {
   URL.revokeObjectURL(url);
 }
 
-// Unlock audio inside the send click, before waiting for the network response.
-// 用户点击发送时初始化声音；浏览器不支持声音也不会影响发送。
-function preparePaperSound() {
-  if (!letterSoundEnabled) return;
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    paperAudioContext ||= new AudioContext();
-    if (paperAudioContext.state === 'suspended') paperAudioContext.resume().catch(() => {});
-  } catch { /* Sound is optional. */ }
-}
-
-// Filtered noise with a brief swishing envelope mimics turning a paper page.
-// 使用滤波噪声和短促起伏模拟翻纸，无需下载音频文件。
-function playPaperSound() {
-  if (!letterSoundEnabled || !paperAudioContext || paperAudioContext.state !== 'running') return;
-  try {
-    const context = paperAudioContext;
-    const duration = 0.65;
-    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
-    const samples = buffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    const filter = context.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1800, context.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(650, context.currentTime + duration);
-    filter.Q.value = 0.55;
-    const gain = context.createGain();
-    const start = context.currentTime;
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(0.12, start + 0.08);
-    gain.gain.linearRampToValueAtTime(0.035, start + 0.24);
-    gain.gain.linearRampToValueAtTime(0.09, start + 0.36);
-    gain.gain.linearRampToValueAtTime(0, start + duration);
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(context.destination);
-    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
-    source.start(start);
-    source.stop(start + duration);
-  } catch { /* Never turn a successful send into an error because of audio. */ }
-}
-
 async function sendLetter() {
   const email = letterDraft.recipientEmail.trim();
   if (!email) {
@@ -508,9 +585,6 @@ async function sendLetter() {
   const subject = letterDraft.subject.trim() || "A note from AgeTogether";
   const sender = state.profile?.preferredName || state.profile?.fullName || "Me";
   const date = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
-  preparePaperSound();
-  const sendStatus = document.querySelector('#letter-send-status');
-  if (sendStatus) sendStatus.textContent = 'Sending your letter...';
 
   try {
     const response = await fetch("/api/send-letter", {
@@ -535,10 +609,8 @@ async function sendLetter() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result?.error || "Email could not be sent.");
 
-    playPaperSound();
-    if (sendStatus?.isConnected) sendStatus.textContent = 'Letter sent.';
+    alert("Letter sent.");
   } catch (error) {
-    if (sendStatus?.isConnected) sendStatus.textContent = 'Your letter could not be sent.';
     alert(error?.message || "Email could not be sent.");
   }
 }
@@ -546,129 +618,22 @@ async function sendLetter() {
 /* Social / 绀句氦涓庣ぞ鍖烘椿鍔?                                             */
 /* ------------------------------------------------------------------ */
 
-// 仅在本机记录活动；刷新或数据库重载后按稳定 ID 恢复。
-function rememberActivity(activity) {
-  activitySelections = window.ActivityCheck.recordSelection(activitySelections, activity);
-  try {
-    localStorage.setItem(window.ActivityCheck.SELECTION_KEY, JSON.stringify(activitySelections));
-    activityStorageMessage = '';
-  } catch { activityStorageMessage = 'Your selection works now, but this device could not save it for next time.'; }
-}
-
-function loadActivityPreferences() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('agetogether.activity-preferences.v1') || 'null');
-    if (stored && Array.isArray(stored.needs) && Array.isArray(stored.interests)) return {
-      needs: stored.needs.filter((need) => Object.hasOwn(window.ActivityCheck.needLabels, need)),
-      interests: stored.interests.filter((interest) => typeof interest === 'string'),
-      maxDistance: [2, 5, 10, 20].includes(stored.maxDistance) ? stored.maxDistance : 5,
-    };
-  } catch { /* Corrupt storage uses profile-derived defaults. */ }
-  const profile = String(state.profile?.accessibility || '');
-  const needs = [];
-  if (/seat|chair/i.test(profile)) needs.push('seating');
-  if (/wheelchair/i.test(profile)) needs.push('wheelchair');
-  if (/step|stairs/i.test(profile)) needs.push('stepFree');
-  if (/hearing/i.test(profile)) needs.push('hearing');
-  if (profile.trim() && !needs.length) needs.push('other');
-  return { needs, maxDistance: 5, interests: [] };
-}
-
-function activityPreferenceMarkup() {
-  const categories = activityFilters().filter((category) => category !== 'All');
-  return `<details class="panel activity-preferences">
-    <summary>Personalise your activity checks</summary>
-    <p class="muted small">Access needs come first, then distance, then interests. Choose what matters to you.</p>
-    <fieldset><legend>Access needs</legend><div class="check-options">
-      ${Object.entries(window.ActivityCheck.needLabels).map(([key, label]) => `<label><input type="checkbox" data-activity-setting="needs" value="${key}" ${activityPreferences.needs.includes(key) ? 'checked' : ''} /> ${label}</label>`).join('')}
-    </div></fieldset>
-    <label>Preferred distance <select data-activity-setting="maxDistance">${[2, 5, 10, 20].map((km) => `<option value="${km}" ${activityPreferences.maxDistance === km ? 'selected' : ''}>Up to ${km} km</option>`).join('')}</select></label>
-    <fieldset><legend>Interests (optional)</legend><div class="check-options">
-      ${categories.map((category) => `<label><input type="checkbox" data-activity-setting="interests" value="${escapeHtml(category)}" ${activityPreferences.interests.includes(category) ? 'checked' : ''} /> ${escapeHtml(category)}</label>`).join('')}
-    </div></fieldset>
-  </details>`;
-}
-
-function activityCheckMarkup(activity) {
-  const check = window.ActivityCheck.analyse(activity, activityPreferences);
-  return `<section class="activity-check check-${check.level}">
-    <h4>Your activity check: ${escapeHtml(check.label)}</h4>
-    <p class="muted small">${activity.saved ? 'Saved' : ''}${activity.saved && activity.joined ? ' · ' : ''}${activity.joined ? 'Interested / selected' : ''}${activity.fromHistory ? ' · From your earlier selections' : ''}</p>
-    <ul>${check.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
-    <p>${escapeHtml(check.next)}</p>
-    <button class="outline-btn" data-activity-followup="${escapeHtml(activity.id)}">Ask Companion about this activity</button>
-    <p class="muted small">This sends the activity description, not your personal access needs, to our AI provider.</p>
-    <p class="activity-answer" role="status" aria-live="polite"></p>
-  </section>`;
-}
-
-// 在活动卡片内显示问答；页面重建后忽略旧请求。
-async function askAboutActivity(button) {
-  const activity = state.activities.find((item) => String(item.id) === button.dataset.activityFollowup);
-  const answer = button.closest('[data-activity-card]')?.querySelector('.activity-answer');
-  if (!activity || !answer || button.disabled) return;
-  button.disabled = true;
-  answer.textContent = 'Your companion is thinking...';
-  try {
-    const response = await fetch('/api/ask', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: 'activity-explain', ...aiPreferences, input: JSON.stringify({ title: activity.title, category: activity.category, description: activity.copy, access: activity.access, distanceKm: window.ActivityCheck.distanceOf(activity), source: activity.source || 'sample', question: 'Explain what I could do here and what to ask the venue before visiting.' }) }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Your companion could not answer right now.');
-    if (!answer.isConnected) return;
-    answer.textContent = payload.text || 'There is no answer available right now.';
-    window.AgePet?.speak(payload.text, { kind: 'ai' });
-  } catch (error) { if (answer.isConnected) answer.textContent = error.message || 'Please try again later.'; }
-  finally { if (button.isConnected) button.disabled = false; }
-}
-
-function letterWritingToolsContent() {
-  return `<h3>Let Companion help with your words</h3>
-    <p class="muted small">Keep your meaning and change the tone. You review the result before using it.</p>
-    <label>Writing language <select data-ai-preference="language">
-      <option value="en-AU" ${aiPreferences.language === 'en-AU' ? 'selected' : ''}>Australian English</option>
-      <option value="SC" ${aiPreferences.language === 'SC' ? 'selected' : ''}>简体中文</option>
-      <option value="TC" ${aiPreferences.language === 'TC' ? 'selected' : ''}>繁體中文</option>
-    </select></label>
-    <div class="check-options">${[['gentle', 'Softer & warmer'], ['simple', 'Simpler'], ['formal', 'More formal']].map(([tone, label]) => `<button class="outline-btn" data-rewrite-tone="${tone}">${label}</button>`).join('')}</div>
-    <p class="muted small">Only your message text is sent to DeepSeek for rewriting. Please leave out private details.</p>
-    <p role="status" aria-live="polite">${escapeHtml(letterRewrite.status)}</p>
-    ${letterRewrite.body ? `<div class="rewrite-preview"><h4>Suggested wording</h4><p class="rewritten-body">${escapeHtml(letterRewrite.body)}</p><button class="primary" data-use-rewrite>Use this wording</button> <button class="outline-btn" data-dismiss-rewrite>Keep original</button></div>` : ''}`;
-}
-
-function letterWritingTools() {
-  return `<section id="letter-writing-tools" class="writing-tools">${letterWritingToolsContent()}</section>`;
-}
-
-// User approves sharing the message before each rewrite. Original stays intact until accepted.
-// 每次改写前确认发送正文；用户采纳前保留原文，防止旧请求覆盖新编辑。
-async function rewriteLetter(tone) {
-  if (!['gentle', 'simple', 'formal'].includes(tone)) return;
-  const original = letterDraft.body;
-  const target = document.querySelector('#letter-writing-tools');
-  if (!target) return;
-  if (original.trim() && !window.confirm('Send this letter message to DeepSeek to change its wording? Recipient name and email will not be sent. Avoid including private details in the message.')) return;
-  const request = letterRewrite.request + 1;
-  letterRewrite = { body: '', original, request, status: original.trim() ? 'Preparing suggested wording...' : 'Write your message first.' };
-  target.innerHTML = letterWritingToolsContent();
-  if (!original.trim()) return;
-  try {
-    const response = await fetch('/api/ask', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: `rewrite-${tone}`, input: original, language: aiPreferences.language, style: 'standard' }),
-    });
-    const payload = await response.json();
-    if (request !== letterRewrite.request || original !== letterDraft.body) return;
-    if (!response.ok || payload.refused || !payload.text) throw new Error(payload.error || 'Companion could not rewrite this message. Your original is unchanged.');
-    letterRewrite.body = payload.text;
-    letterRewrite.status = 'Read the suggestion and choose whether to use it.';
-  } catch (error) {
-    if (request !== letterRewrite.request) return;
-    letterRewrite.status = error.message || 'Please try again later.';
-  }
-  const current = document.querySelector('#letter-writing-tools');
-  if (current) current.innerHTML = letterWritingToolsContent();
+function locationCard() {
+  const isDefault = locationStatus === "default" || locationStatus === "denied" || locationStatus === "error";
+  const buttonLabel = locationStatus === "locating" ? "Locating..." : "&#x1F4CD; Use my location";
+  return `
+    <div class="location-card">
+      <span class="location-card-info">
+        &#x1F4CD;
+        <span>
+          <span class="muted">${isDefault ? "Showing activities near" : "Using your current location"}</span>
+          <br /><strong>${escapeHtml(userLocation.label)}</strong>
+        </span>
+      </span>
+      <button class="outline-btn" data-action="use-my-location" ${locationStatus === "locating" ? "disabled" : ""}>${buttonLabel}</button>
+    </div>
+    ${locationMessage ? `<p class="muted small location-message">${escapeHtml(locationMessage)}</p>` : ""}
+  `;
 }
 
 function renderSocial() {
@@ -681,20 +646,18 @@ function renderSocial() {
   app.innerHTML = `
     ${pageHead("Social & Community", "Find nearby activities, helpful news, and save items for later")}
     <section class="container">
-      <div class="location-card">&#x1F4CD; <span><span class="muted">Demonstration location for distances</span><br /><strong>Melbourne CBD, VIC</strong></span></div>
+      ${locationCard()}
       <div class="tabs">
         <button class="tab ${socialTab === "activities" ? "active" : ""}" data-social-tab="activities">&#x1F5FA; Nearby Activities</button>
         <button class="tab ${socialTab === "news" ? "active" : ""}" data-social-tab="news">&#x1F4F0; Current News</button>
-        <button class="tab ${socialTab === "saved" ? "active" : ""}" data-social-tab="saved">&#x1F516; Your selections</button>
+        <button class="tab ${socialTab === "saved" ? "active" : ""}" data-social-tab="saved">&#x1F516; Saved</button>
       </div>
-      ${socialTab !== 'news' ? activityPreferenceMarkup() : ''}
-      ${activityStorageMessage ? `<p role="status">${escapeHtml(activityStorageMessage)}</p>` : ''}
       ${content}
     </section>
   `;
 
   if (socialTab === "activities" && activityView === "map") {
-    const filtered = state.activities.filter((a) => !a.fromHistory && (state.activityFilter === "All" || a.category === state.activityFilter));
+    const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
     initActivityMap(filtered);
   } else if (activityMap) {
     activityMap.remove();
@@ -710,7 +673,7 @@ function renderActivities() {
   // Activity cards are generated from `state.activities`.
   // The filter is a simple category match, which demonstrates a transparent
   // data-driven discovery baseline suitable for Iteration 1.
-  const filtered = state.activities.filter((a) => !a.fromHistory && (state.activityFilter === "All" || a.category === state.activityFilter));
+  const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
     <p class="muted section-copy">
@@ -755,17 +718,17 @@ function activity(a) {
   // Reusable card for one activity/place suggestion.
   // The same component is used in both the Activities tab and Saved tab.
   return `
-    <article class="activity-card" data-activity-card="${escapeHtml(a.id)}">
+    <article class="activity-card">
       <div class="card-top">
-        <span class="activity-icon">${/^&#x[0-9a-f]+;$/i.test(a.icon || '') ? a.icon : escapeHtml(a.icon)}</span>
+        <span class="activity-icon">${a.icon}</span>
         <h3>${escapeHtml(a.title)}</h3>
-        <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${escapeHtml(a.id)}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
+        <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
       </div>
       <p class="muted">&#x1F4CD; ${escapeHtml(a.location)}</p>
       <p><span class="small-badge blue-badge">&#x1F5D3; ${escapeHtml(a.date)}</span> <span class="small-badge">${escapeHtml(a.price)}</span></p>
       <p>${escapeHtml(a.copy)}</p>
       <p class="muted small">&#x267F; ${escapeHtml(a.access)}<br />&#x1F3E2; ${escapeHtml(a.organiser)}</p>
-      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${escapeHtml(a.id)}">${
+      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${
         a.source === "database"
           ? a.joined
             ? "&#x2713; Interested - tap to remove"
@@ -774,7 +737,6 @@ function activity(a) {
             ? "&#x2713; Joined - tap to leave"
             : "Join Activity"
       }</button>
-      ${a.saved || a.joined ? activityCheckMarkup(a) : ''}
     </article>
   `;
 }
@@ -826,7 +788,15 @@ function renderNews() {
   // News cards are generated from `state.newsItems`.
   return `
     <h2>Useful news & information</h2>
-    <p class="muted section-copy">Simple, helpful news for healthy and connected living.</p>
+    <p class="muted section-copy">
+      ${
+        newsSource === "feed"
+          ? "A snapshot of recent SBS News headlines. Tap through to read the full article on SBS News."
+          : "Simple, helpful news for healthy and connected living."
+      }
+    </p>
+    ${newsLoading ? `<p class="info-note">Loading the latest news snapshot...</p>` : ""}
+    ${newsError ? `<p class="info-note warning-note">${newsError}</p>` : ""}
     <section class="social-grid">
       ${state.newsItems.map((n) => news(n)).join("")}
     </section>
@@ -835,16 +805,24 @@ function renderNews() {
 
 function news(n) {
   // Reusable card for one news item. Saved state controls the button label.
+  // n.icon is a controlled HTML entity (not user input), so it is not escaped -
+  // same treatment as a.icon in activity() below.
+  const dateLabel = formatNewsDate(n.publishedDate);
   return `
     <article class="news-card">
       <div class="card-top">
-        <span class="activity-icon">${escapeHtml(n.icon)}</span>
+        <span class="activity-icon">${n.icon}</span>
         <span class="small-badge blue-badge">${escapeHtml(n.tag)}</span>
         <button class="save-btn ${n.saved ? "saved" : ""}" data-save-news="${n.id}">&#x1F516; ${n.saved ? "Saved" : "Save"}</button>
       </div>
       <h3>${escapeHtml(n.title)}</h3>
       <p>${escapeHtml(n.copy)}</p>
-      <p class="muted small">Source: ${escapeHtml(n.source)}</p>
+      <p class="muted small">Source: ${escapeHtml(n.source)}${dateLabel ? ` &middot; ${dateLabel}` : ""}</p>
+      ${
+        n.articleUrl
+          ? `<a class="outline-btn wide news-link" href="${escapeHtml(n.articleUrl)}" target="_blank" rel="noopener noreferrer">Read full article on SBS News &#x2197;</a>`
+          : ""
+      }
     </article>
   `;
 }
@@ -852,7 +830,7 @@ function news(n) {
 function renderSaved() {
   // Saved view is derived from the data, not stored as a separate list.
   // It collects activities/news where `saved === true`.
-  const savedActivities = state.activities.filter((a) => a.saved || a.joined);
+  const savedActivities = state.activities.filter((a) => a.saved);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
   if (!savedActivities.length && !savedNews.length) {
@@ -860,7 +838,7 @@ function renderSaved() {
       <section class="panel empty">
         <div>
           <div class="empty-icon">&#x1F516;</div>
-          <h2>No selections yet</h2>
+          <h2>Nothing saved yet</h2>
           <p class="muted">Browse Nearby Activities or Current News and tap the Save button on any item to keep it here.</p>
           <button class="primary" data-social-tab="activities">Browse Activities</button>
           <button class="blue-btn" data-social-tab="news">Browse News</button>
@@ -870,8 +848,8 @@ function renderSaved() {
   }
 
   return `
-    <h2>Your selected activities and saved news</h2>
-    <p class="muted section-copy">Saved and interested activities are kept on this device. Each activity has its own check.</p>
+    <h2>Your Saved Items</h2>
+    <p class="muted section-copy">Activities and news you have saved to read or revisit later.</p>
     <section class="social-grid">
       ${savedActivities.map((a) => activity(a)).join("")}
       ${savedNews.map((n) => news(n)).join("")}
@@ -1043,7 +1021,6 @@ function renderAI() {
   `;
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
-  window.AgePet?.mountSetup();
   // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
 }
 
@@ -1104,23 +1081,6 @@ function render() {
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
-  const rewriteButton = event.target.closest('[data-rewrite-tone]');
-  if (rewriteButton) { rewriteLetter(rewriteButton.dataset.rewriteTone); return; }
-  if (event.target.closest('[data-use-rewrite]')) {
-    if (letterRewrite.body && letterDraft.body === letterRewrite.original) {
-      letterDraft.body = letterRewrite.body;
-      letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-      renderLetter();
-    }
-    return;
-  }
-  if (event.target.closest('[data-dismiss-rewrite]')) {
-    letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-    renderLetter();
-    return;
-  }
-  const followUp = event.target.closest('[data-activity-followup]');
-  if (followUp) { askAboutActivity(followUp); return; }
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
@@ -1219,7 +1179,7 @@ document.addEventListener("click", (event) => {
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) { activityItem.saved = !activityItem.saved; rememberActivity(activityItem); }
+    if (activityItem) activityItem.saved = !activityItem.saved;
     renderSocial();
     return;
   }
@@ -1248,7 +1208,7 @@ document.addEventListener("click", (event) => {
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) { activityItem.joined = !activityItem.joined; rememberActivity(activityItem); }
+    if (activityItem) activityItem.joined = !activityItem.joined;
     renderSocial();
     return;
   }
@@ -1296,36 +1256,10 @@ document.addEventListener("input", (event) => {
   const letterField = event.target.closest("[data-letter-field]");
   if (!letterField) return;
   letterDraft[letterField.dataset.letterField] = letterField.value;
-  if (letterField.dataset.letterField === 'body') {
-    letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-    const tools = document.querySelector('#letter-writing-tools');
-    if (tools) tools.innerHTML = letterWritingToolsContent();
-  }
   updateLetterPreview();
 });
 
 document.addEventListener("change", (event) => {
-  const soundToggle = event.target.closest('[data-letter-sound]');
-  if (soundToggle) {
-    letterSoundEnabled = soundToggle.checked;
-    try { localStorage.setItem('agetogether.letter-sound', letterSoundEnabled ? 'on' : 'off'); } catch { /* Applies for this session. */ }
-    return;
-  }
-  const activitySetting = event.target.closest('[data-activity-setting]');
-  if (activitySetting) {
-    const field = activitySetting.dataset.activitySetting;
-    if (field === 'maxDistance') activityPreferences.maxDistance = Number(activitySetting.value);
-    else {
-      const values = new Set(activityPreferences[field]);
-      if (activitySetting.checked) values.add(activitySetting.value);
-      else values.delete(activitySetting.value);
-      activityPreferences[field] = [...values];
-    }
-    try { localStorage.setItem('agetogether.activity-preferences.v1', JSON.stringify(activityPreferences)); }
-    catch { activityStorageMessage = 'Your preferences apply now, but could not be saved on this device.'; }
-    renderSocial();
-    return;
-  }
   const preference = event.target.closest("[data-ai-preference]");
   if (preference) {
     aiPreferences[preference.dataset.aiPreference] = preference.value;
@@ -1345,6 +1279,11 @@ document.addEventListener("change", (event) => {
 });
 
 function handleAction(action) {
+  if (action === "use-my-location") {
+    useMyLocation();
+    return;
+  }
+
   if (action === "download-letter") {
     downloadLetter();
     return;
@@ -1377,5 +1316,5 @@ function handleAction(action) {
 // 鍙充笅瑙掓瀹犲揩鎹峰叆鍙ｏ細鐐瑰嚮鍚庢墦寮€ AI Companion 椤甸潰銆?// 杩欓噷鍙仛鍓嶇瀵艰埅锛涘綋鍓?AI 椤甸潰鏄潤鎬侀〉闈紝涓嶄細璋冪敤澶栭儴 AI 鎴栧悗绔€?
 // Initial render after data.js has populated window.appData.
 // data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
-render();
 loadDatabaseActivities();
+loadNewsFeed();
