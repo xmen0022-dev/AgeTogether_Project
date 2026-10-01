@@ -1,5 +1,30 @@
 # AgeTogether Australia App
 
+## Contextual Companion tools
+
+Social activity selections (Save and Interested/Join) are retained in this
+device's localStorage and restored after database loading. Your selections
+shows every selected activity with its own check, including selections from a
+previous data source. These are local intentions, not real registrations.
+
+The activity check is a hand-authored decision tree, not a trained ML model:
+accessibility information and selected needs come first, distance second,
+interests last. Unknown access or distance requires venue confirmation.
+The preferred distance defaults to 5 km and can be changed. Distances use the
+Melbourne CBD demonstration location, not live device location. The optional
+Companion follow-up stays in the activity card and sends venue description
+data, not the user's personal access preferences, to DeepSeek.
+
+Letter includes Softer & warmer, Simpler and More formal rewriting, with
+Australian English, Simplified Chinese and Traditional Chinese output.
+Each request asks the user to confirm sending the message body to DeepSeek;
+recipient fields are excluded. Suggested text is previewed before the user
+chooses Use this wording or Keep original. Sending and downloading still use
+the accepted draft and existing paper/font/colour choices. A valid server-side
+DeepSeek key is required for rewrites and contextual follow-up, but not for
+the decision tree. Requests ending at the model token limit are not offered
+as complete rewrites.
+
 First-iteration static prototype for the AgeTogether Australia app.
 
 ## Local preview

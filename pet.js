@@ -104,6 +104,59 @@ const HEALTH_TIPS = {
 
 const SUPPORTED_PET_LANGUAGES = new Set(Object.keys(HEALTH_TIPS));
 
+// Each upload receives a token. Only the newest token may update the Pet,
+// which prevents a slower, older image-processing job from winning a race.
+function createLatestTaskGuard() {
+  let latestId = 0;
+  return {
+    begin() {
+      const id = ++latestId;
+      return { isCurrent: () => id === latestId };
+    },
+  };
+}
+
+const photoTasks = createLatestTaskGuard();
+
+// Keep Pet-owned timers together so a closing page can release them in one step.
+function createPetTimerManager(timerApi = globalThis) {
+  const timeouts = new Set();
+  const intervals = new Set();
+
+  return {
+    after(callback, delay) {
+      let id;
+      id = timerApi.setTimeout(() => {
+        timeouts.delete(id);
+        callback();
+      }, delay);
+      timeouts.add(id);
+      return id;
+    },
+    every(callback, delay) {
+      const id = timerApi.setInterval(callback, delay);
+      intervals.add(id);
+      return id;
+    },
+    cancelAfter(id) {
+      timeouts.delete(id);
+      timerApi.clearTimeout(id);
+    },
+    cancelEvery(id) {
+      intervals.delete(id);
+      timerApi.clearInterval(id);
+    },
+    stop() {
+      timeouts.forEach((id) => timerApi.clearTimeout(id));
+      intervals.forEach((id) => timerApi.clearInterval(id));
+      timeouts.clear();
+      intervals.clear();
+    },
+  };
+}
+
+const petTimers = createPetTimerManager();
+
 // Keep model replies short enough for a speech bubble above the companion.
 function limitPetWords(text, maxWords = 10) {
   return String(text ?? "")
@@ -380,6 +433,8 @@ function savePet(pet) {
 
 let speechTimer = null;
 let reminderTimer = null;
+let idleHopTimer = null;
+let snoreTimer = null;
 
 function petLanguage() {
   // Follow the language selected on the AI Companion page when it is available.
@@ -409,13 +464,13 @@ function speak(message, options = {}) {
   const bubble = ensureSpeechBubble();
   if (!bubble) return;
 
-  clearTimeout(speechTimer);
+  petTimers.cancelAfter(speechTimer);
   const petRect = petButton.getBoundingClientRect();
   bubble.style.right = `${Math.max(12, window.innerWidth - petRect.right)}px`;
   bubble.style.bottom = `${Math.max(84, window.innerHeight - petRect.top + 12)}px`;
   bubble.className = `pet-speech is-visible is-${options.kind ?? "ai"}`;
   bubble.textContent = text;
-  speechTimer = setTimeout(() => bubble.classList.remove("is-visible"), options.durationMs ?? 7000);
+  speechTimer = petTimers.after(() => bubble.classList.remove("is-visible"), options.durationMs ?? 7000);
 }
 
 function loadReminders() {
@@ -471,22 +526,20 @@ const REMINDER_COPY = {
   },
 };
 
-function showNextHealthTip() {
+function showNextHealthTip(pet) {
   // Every tenth click produces one alternating mental or physical tip.
-  const pet = loadPet();
   const tip = nextHealthTip(pet.clickCount, pet.healthTipIndex, petLanguage());
   if (!tip) return;
   pet.healthTipIndex += 1;
-  savePet(pet);
   speak(tip.text, { kind: "tip", durationMs: 9000 });
 }
 
 function recordPetClick() {
-  // Count all direct Pet presses, including when reduced motion is enabled.
+  // Count and persist one direct Pet press, including when reduced motion is enabled.
   const pet = loadPet();
   pet.clickCount = Number.isInteger(pet.clickCount) && pet.clickCount >= 0 ? pet.clickCount + 1 : 1;
+  showNextHealthTip(pet);
   savePet(pet);
-  showNextHealthTip();
 }
 
 function checkReminders(now = new Date()) {
@@ -504,9 +557,9 @@ function checkReminders(now = new Date()) {
 
 function startReminderScheduler() {
   // Restarting is safe when the single-page UI is rendered again.
-  clearInterval(reminderTimer);
+  petTimers.cancelEvery(reminderTimer);
   checkReminders();
-  reminderTimer = setInterval(checkReminders, 60000);
+  reminderTimer = petTimers.every(checkReminders, 60000);
 }
 
 function setReminderSettings(value) {
@@ -539,7 +592,7 @@ function bondProgress(bond) {
 const lastAwardAt = {};
 
 /** Adds bond and never subtracts. Returns false when the cooldown swallowed it. */
-function addBond(source) {
+function addBond(source, pet = loadPet()) {
   // Award bond for an interaction while cooldowns prevent repeated farming.
   const amount = BOND_REWARDS[source];
   if (!amount) return false;
@@ -549,7 +602,6 @@ function addBond(source) {
   if (cooldown && now - (lastAwardAt[source] ?? 0) < cooldown) return false;
   lastAwardAt[source] = now;
 
-  const pet = loadPet();
   pet.bond += amount;
   if (source === "feed") pet.lastFedAt = now;
   savePet(pet);
@@ -578,7 +630,7 @@ function applySleepState() {
 /** A drowsy Z now and then, so the sleeping state reads as sleeping. */
 function scheduleSnore() {
   // Periodically check sleep state and emit an occasional ZZZ particle.
-  setTimeout(() => {
+  snoreTimer = petTimers.after(() => {
     if (!document.hidden && isAsleep() && !petButton?.classList.contains("hidden")) {
       emitParticles(1, "zzz");
     }
@@ -666,8 +718,8 @@ function react(pose) {
   void petButton.offsetWidth; // restart the animation even if the same pose is already running
   petButton.classList.add(reaction.className);
 
-  clearTimeout(reactionTimer);
-  reactionTimer = setTimeout(() => petButton.classList.remove(reaction.className), reaction.durationMs);
+  petTimers.cancelAfter(reactionTimer);
+  reactionTimer = petTimers.after(() => petButton.classList.remove(reaction.className), reaction.durationMs);
 
   if (reaction.particles) emitParticles(reaction.particles);
 }
@@ -776,7 +828,7 @@ function emitParticles(count, forcedKind) {
     particle.style.animationDelay = `${index * 90}ms`;
 
     petButton.append(particle);
-    setTimeout(() => particle.remove(), 900 + index * 90 + 80);
+    petTimers.after(() => particle.remove(), 900 + index * 90 + 80);
   });
 }
 
@@ -787,7 +839,7 @@ function emitParticles(count, forcedKind) {
 function scheduleIdleHop() {
   // Schedule the next irregular idle hop so the companion feels less mechanical.
   const delay = 12000 + Math.random() * 14000;
-  setTimeout(() => {
+  idleHopTimer = petTimers.after(() => {
     if (!document.hidden && !isAsleep()) react("hop");
     scheduleIdleHop();
   }, delay);
@@ -995,10 +1047,11 @@ function onSnack(event) {
   const button = event.target.closest("[data-snack]");
   if (!button) return;
 
-  const name = loadPet().name ?? "Your companion";
+  const pet = loadPet();
+  const name = pet.name ?? "Your companion";
 
   // A refusal here is never a telling-off: it is the companion being content.
-  const accepted = addBond("feed");
+  const accepted = addBond("feed", pet);
 
   if (accepted) {
     wakeUntil = Date.now() + 6000;
@@ -1091,11 +1144,13 @@ async function onPhotoChosen(event) {
   const file = event.target.files?.[0];
   event.target.value = ""; // let the same file be chosen again later
   if (!file) return;
+  const photoTask = photoTasks.begin();
 
   try {
     // De-duplicate before doing any work: cutting out is the slow step, and on
     // a first run it also downloads the model.
     const fingerprint = await fingerprintFile(file);
+    if (!photoTask.isCurrent()) return;
     const library = loadLibrary();
     const existing = library.items.find((item) => item.fingerprint === fingerprint);
 
@@ -1112,8 +1167,10 @@ async function onPhotoChosen(event) {
     setStatus("Getting your photo ready. This can take a few moments...");
 
     const image = await readFileAsImage(file);
+    if (!photoTask.isCurrent()) return;
     const working = downscale(image);
     const cutOut = await removeBackground(working);
+    if (!photoTask.isCurrent()) return;
     const finished = downscale(cutOut ? trimTransparentEdges(cutOut) : circularCrop(working), STORED_DIMENSION);
     const dataUrl = finished.toDataURL("image/png");
 
@@ -1141,7 +1198,7 @@ async function onPhotoChosen(event) {
     react("happy");
   } catch (error) {
     console.error("[companion]", error);
-    setStatus("Sorry, that photo could not be used. Please try a different one.");
+    if (photoTask.isCurrent()) setStatus("Sorry, that photo could not be used. Please try a different one.");
   }
 }
 
@@ -1163,4 +1220,9 @@ if (typeof window !== "undefined") {
     getReminderSettings: loadReminders,
     setReminderSettings,
   };
+
+  // A persisted page is frozen and may resume, so only release timers on a real close.
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) petTimers.stop();
+  });
 }

@@ -2126,3 +2126,20 @@ textarea {
     display: none;
   }
 }
+/* Contextual Companion tools in Social and Letter. */
+.letter-sound-toggle { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; }
+.letter-sound-toggle input { width: 1.2rem; height: 1.2rem; }
+.activity-preferences { margin: 1rem 0; }
+.activity-preferences summary { cursor: pointer; font-weight: 700; }
+.activity-preferences fieldset { border: 0; padding: 0; margin: 1rem 0; }
+.check-options { display: flex; flex-wrap: wrap; gap: .75rem; margin: .75rem 0; }
+.check-options label { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem; }
+.check-options input { width: 1.2rem; height: 1.2rem; }
+.activity-check, .writing-tools { margin-top: 1rem; padding: 1rem; border: 1px solid #acc2ad; border-radius: 12px; background: #f4f9f3; }
+.activity-check h4 { margin: 0 0 .5rem; }
+.activity-check li { margin: .5rem 0; }
+.check-confirmation { background: #fff8e9; border-color: #c6a665; }
+.check-checking { background: #f0f5fb; border-color: #8faac8; }
+.activity-answer, .rewritten-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rewrite-preview { margin-top: 1rem; border-top: 1px solid #b9c9b9; padding-top: .5rem; }
+.writing-tools select, .activity-preferences select { max-width: 100%; padding: .5rem; margin: .5rem; }

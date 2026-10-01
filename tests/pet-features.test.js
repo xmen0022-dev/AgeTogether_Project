@@ -6,10 +6,10 @@ import vm from "node:vm";
 const source = readFileSync(new URL("../pet.js", import.meta.url), "utf8");
 const sandbox = { console, setTimeout: () => 0, clearTimeout: () => {} };
 vm.runInNewContext(
-  `${source}\nglobalThis.testExports = { isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings };`,
+  `${source}\nglobalThis.testExports = { createLatestTaskGuard, createPetTimerManager, isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings };`,
   sandbox,
 );
-const { isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings } = sandbox.testExports;
+const { createLatestTaskGuard, createPetTimerManager, isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings } = sandbox.testExports;
 
 test("limits Pet speech to the requested word count", () => {
   assert.equal(limitPetWords("Please drink some water and rest today", 5), "Please drink some water and");
@@ -42,4 +42,40 @@ test("normalizes malformed reminder settings to safe defaults", () => {
 test("normalizes short speech edge cases", () => {
   assert.equal(limitPetWords("", 10), "");
   assert.equal(limitPetWords("Hello, friend!", 10), "Hello, friend!");
+});
+
+test("only lets the newest photo task update the companion", () => {
+  const photoTasks = createLatestTaskGuard();
+  const firstPhoto = photoTasks.begin();
+  const secondPhoto = photoTasks.begin();
+
+  assert.equal(firstPhoto.isCurrent(), false);
+  assert.equal(secondPhoto.isCurrent(), true);
+});
+
+test("stops outstanding Pet timers when its lifecycle ends", () => {
+  let nextId = 1;
+  const timeouts = new Set();
+  const intervals = new Set();
+  const timers = createPetTimerManager({
+    setTimeout: () => {
+      const id = nextId++;
+      timeouts.add(id);
+      return id;
+    },
+    clearTimeout: (id) => timeouts.delete(id),
+    setInterval: () => {
+      const id = nextId++;
+      intervals.add(id);
+      return id;
+    },
+    clearInterval: (id) => intervals.delete(id),
+  });
+
+  timers.after(() => {}, 1000);
+  timers.every(() => {}, 60000);
+  timers.stop();
+
+  assert.equal(timeouts.size, 0);
+  assert.equal(intervals.size, 0);
 });

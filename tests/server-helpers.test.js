@@ -54,3 +54,30 @@ test("accepts the Render environment variable name used by the deployed service"
   assert.equal(getDeepSeekApiKey({ deepseekAgeV1: "render-key" }), "render-key");
   assert.equal(getDeepSeekApiKey({ DEEPSEEK_API_KEY: "standard-key", deepseekAgeV1: "render-key" }), "standard-key");
 });
+
+test('letter rewrite tasks preserve facts and boundaries while giving distinct tone instructions', () => {
+  for (const tone of ['gentle', 'simple', 'formal']) {
+    const prompt = buildSystemPrompt(`rewrite-${tone}`, 'SC', 'standard');
+    assert.match(prompt, /Preserve its meaning, facts/);
+    assert.match(prompt, /Never add promises/);
+    assert.match(prompt, /简体中文/);
+  }
+  assert.match(buildSystemPrompt('rewrite-gentle'), /without weakening/);
+  assert.match(buildSystemPrompt('rewrite-simple'), /plain everyday words/);
+  assert.match(buildSystemPrompt('rewrite-formal'), /natural formal language/);
+});
+
+test('activity follow-up distinguishes discovery places from confirmed events', () => {
+  const prompt = buildSystemPrompt('activity-explain');
+  assert.match(prompt, /rather than a confirmed event/);
+  assert.match(prompt, /demonstration origin/);
+  assert.match(prompt, /Never invent/);
+});
+
+test('a token-truncated rewrite is not presented as a complete letter', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: 'Partial rewrite' }, finish_reason: 'length' }] }), { status: 200 });
+  try {
+    assert.equal((await runTask('rewrite-gentle', 'Original letter')).refused, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
