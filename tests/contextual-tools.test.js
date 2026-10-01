@@ -99,3 +99,16 @@ test('AI failures keep the original letter available', async () => {
   assert.equal(fixture.run('letterRewrite.body'), '');
   assert.match(fixture.tools.innerHTML, /Companion unavailable/);
 });
+
+test('opening AI Companion mounts the photo picker after creating its setup container', () => {
+  const fixture = appFixture();
+  let mounted = 0;
+  fixture.context.window.AgePet = {
+    mountSetup() {
+      assert.match(fixture.app.innerHTML, /id="pet-setup"/);
+      mounted += 1;
+    },
+  };
+  fixture.run("setRoute('ai')");
+  assert.equal(mounted, 1, 'Photo setup must be mounted when the AI page opens');
+});

@@ -1043,6 +1043,7 @@ function renderAI() {
   `;
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
+  window.AgePet?.mountSetup();
   // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
 }
 
