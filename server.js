@@ -812,7 +812,8 @@ const server = createServer(async (req, res) => {
 
   // Require the review password before serving static files or API responses.
   // 静态页面和 API 都先经过密码保护，确保测试网站不是完全公开访问。
-  if (!checkBasicAuth(req, res)) return;
+  // Temporarily disabled: site-wide username/password protection.
+  // if (!checkBasicAuth(req, res)) return;
 
   try {
     if (pathname === "/api/ask" && req.method === "POST") return await handleAsk(req, res);
