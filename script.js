@@ -79,7 +79,6 @@ function applyTextSize() {
   // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
-  // 鎶?1 鍒?5 妗ｅ瓧浣撹缃浆鎹㈡垚 body 涓婄殑 CSS class銆傚叿浣撳瓧鍙峰啓鍦?  // styles.css 閲岋紝杩欐牱椤甸潰澶ч儴鍒嗘枃瀛楅兘浼氳窡鐫€ body 鐨勫瓧鍙蜂竴璧峰彉鍖栥€?  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
@@ -818,7 +817,7 @@ function initActivityMap(activities) {
     activityMap.fitBounds(bounds.pad(0.25));
   } else {
     // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
-    // 濡傛灉绛涢€夊悗鐨勬椿鍔ㄩ兘娌℃湁鍧愭爣锛屽氨鍥為€€鍒板ⅷ灏旀湰 CBD 鐨勯粯璁ゅ湴鍥捐鍥俱€?    activityMap.setView([-37.8136, 144.9631], 12);
+    activityMap.setView([-37.8136, 144.9631], 12);
   }
 }
 
@@ -1014,8 +1013,8 @@ function renderAI() {
               <label for="ai-language">Language</label>
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
-                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>绠€浣撲腑鏂?/option>
-                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
+                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>简体中文</option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>繁體中文</option>
               </select>
             </div>
             <div class="field">
@@ -1044,7 +1043,6 @@ function renderAI() {
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
   window.AgePet?.mountSetup();
-  // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
 }
 
 // Send one named task to the server and render the response as plain text.
@@ -1273,7 +1271,7 @@ document.addEventListener("click", (event) => {
     // My feature / 鎴戠殑鍔熻兘锛歶pdate the global text-size class from Profile.
     // After changing the level, renderProfile() refreshes only the Profile
     // controls so the active button reflects the current size.
-    // 鐢ㄦ埛鐐瑰嚮 Profile 閲岀殑瀛楀彿鎸夐挳鍚庯紝鍏堟洿鏂板叏灞€妗ｄ綅鍜?body class锛?    // 鍐嶅埛鏂?Profile 鎺т欢锛岃褰撳墠閫変腑鐨勬寜閽姸鎬佹纭樉绀恒€?    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    textSizeLevel = Number(textSizeTarget.dataset.textSize);
     applyTextSize();
     renderProfile();
     return;
