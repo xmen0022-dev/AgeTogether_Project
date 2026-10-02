@@ -628,15 +628,11 @@ textarea {
 }
 
 .letter-format-menu {
-  position: sticky;
-  top: 137px;
-  z-index: 12;
   border: 2px solid rgba(106, 162, 122, 0.42);
   border-radius: 20px;
   padding: 0;
   background: rgba(255, 253, 248, 0.96);
-  box-shadow: 0 18px 38px rgba(50, 39, 27, 0.14);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--soft-shadow);
 }
 
 .letter-format-menu summary {
@@ -988,14 +984,42 @@ textarea {
 }
 
 .location-card {
-  width: min(460px, 100%);
+  width: min(560px, 100%);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 18px;
   border: 1px solid var(--blue);
   border-radius: 14px;
   padding: 18px 28px;
   background: var(--blue-soft);
+}
+
+.location-card-info {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.location-card .outline-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.location-card .outline-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.location-message {
+  margin: 10px 0 0;
+}
+
+.news-link {
+  display: inline-block;
+  margin-top: 4px;
+  text-align: center;
+  text-decoration: none;
 }
 
 .section-copy {
@@ -1579,10 +1603,6 @@ textarea {
 
   .page-head {
     padding: 20px 24px 16px;
-  }
-
-  .letter-format-menu {
-    top: 12px;
   }
 
   .letter-format-menu summary {

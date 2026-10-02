@@ -6,10 +6,25 @@ import vm from "node:vm";
 const source = readFileSync(new URL("../pet.js", import.meta.url), "utf8");
 const sandbox = { console, setTimeout: () => 0, clearTimeout: () => {} };
 vm.runInNewContext(
-  `${source}\nglobalThis.testExports = { createLatestTaskGuard, createPetTimerManager, isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings };`,
+  `${source}\nglobalThis.testExports = { mountSetup, createLatestTaskGuard, createPetTimerManager, isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings };`,
   sandbox,
 );
 const { createLatestTaskGuard, createPetTimerManager, isReminderDue, limitPetWords, nextHealthTip, normalizeReminderSettings } = sandbox.testExports;
+
+test('photo setup renders an image picker and binds the cutout upload handler', () => {
+  const events = [];
+  const host = {
+    innerHTML: '',
+    querySelector: (selector) => ({ addEventListener: (name, callback) => events.push({ selector, name, callback }) }),
+  };
+  sandbox.document = { querySelector: () => host };
+  try {
+    sandbox.testExports.mountSetup();
+    assert.match(host.innerHTML, /Choose a photo/);
+    assert.match(host.innerHTML, /type="file" id="pet-file" accept="image\/\*"/);
+    assert.ok(events.some((entry) => entry.selector === '#pet-file' && entry.name === 'change' && typeof entry.callback === 'function'));
+  } finally { delete sandbox.document; }
+});
 
 test("limits Pet speech to the requested word count", () => {
   assert.equal(limitPetWords("Please drink some water and rest today", 5), "Please drink some water and");

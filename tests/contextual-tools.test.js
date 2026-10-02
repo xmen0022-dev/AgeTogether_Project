@@ -19,7 +19,7 @@ function appFixture(records = new Map()) {
     },
     localStorage: { getItem: (key) => records.get(key) ?? null, setItem: (key, value) => records.set(key, value) },
     fetch: async (url, options) => {
-      if (url.includes('nearby-places')) throw new Error('Use sample data');
+      if (url.includes('nearby-places') || url === '/api/news') throw new Error('Use sample data');
       calls.push(JSON.parse(options.body));
       return { ok: true, json: async () => ({ text: 'Could we please talk tomorrow?' }) };
     },
@@ -111,4 +111,17 @@ test('opening AI Companion mounts the photo picker after creating its setup cont
   };
   fixture.run("setRoute('ai')");
   assert.equal(mounted, 1, 'Photo setup must be mounted when the AI page opens');
+  assert.match(fixture.app.innerHTML, /value="SC"[^>]*>简体中文<\/option>/);
+  assert.match(fixture.app.innerHTML, /value="TC"[^>]*>繁體中文<\/option>/);
+});
+
+test('restored Letter tools coexist with current location and news entry points', () => {
+  const fixture = appFixture();
+  fixture.run("setRoute('letter')");
+  assert.match(fixture.app.innerHTML, /data-rewrite-tone="gentle"/);
+  assert.match(fixture.app.innerHTML, /data-letter-sound/);
+  fixture.run("setRoute('social')");
+  assert.match(fixture.app.innerHTML, /Use my location/);
+  fixture.run("socialTab = 'news'; renderSocial()");
+  assert.match(fixture.app.innerHTML, /news/);
 });

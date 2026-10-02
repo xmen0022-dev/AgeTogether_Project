@@ -31,7 +31,7 @@
     const km = distanceOf(activity);
     const reasons = [
       !known ? 'The venue has not provided confirmed access details.' : unmet.length ? `Please confirm: ${unmet.map((need) => needLabels[need] || 'Other access needs').join(', ')}.` : needs.length ? 'The listed access details appear to address your chosen needs.' : 'No specific access needs selected; venue details still need checking.',
-      km === null ? 'Distance is not available.' : `${km} km from the demonstration location; your preferred range is ${maxDistance} km.`,
+      km === null ? 'Distance is not available.' : `${km} km from ${activity.distanceOrigin || 'the demonstration location'}; your preferred range is ${maxDistance} km.`,
       !interests.length ? 'No interest preference selected.' : interests.includes(activity.category) ? 'This category matches one of your interests.' : 'This is outside your usual interests, but you may enjoy trying it.',
     ];
     if (!known || unmet.length || km === null) return { level: 'confirmation', label: 'Needs confirmation', reasons, next: 'Contact the venue to confirm access, travel and current activity details.' };

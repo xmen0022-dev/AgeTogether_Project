@@ -29,6 +29,18 @@ try { letterSoundEnabled = localStorage.getItem('agetogether.letter-sound') !== 
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
+
+const staticNewsItems = JSON.parse(JSON.stringify(state.newsItems || []));
+let newsSource = "static";
+let newsLoading = false;
+let newsError = "";
+
+// Defaults to Melbourne CBD until the user opts in to sharing their real
+// location. Nothing is requested automatically - see the "Use my location"
+// button in the Social location card.
+let userLocation = { lat: -37.8136, lng: 144.9631, label: "Melbourne CBD, VIC" };
+let locationStatus = "default"; // "default" | "locating" | "granted" | "denied" | "error"
+let locationMessage = "";
 const letterDraft = {
   recipientName: "",
   recipientEmail: "",
@@ -75,18 +87,21 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  document.body.classList.remove('text-size-1', 'text-size-2', 'text-size-3', 'text-size-4', 'text-size-5');
   // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
-function activityIcon(category) {
+function activityIcon(category, title = "") {
   // Use numeric HTML entities for controlled activity icons.
   // This avoids broken emoji encoding in the Social cards.
-  const value = `${category || ""}`.toLowerCase();
+  const value = `${category || ""} ${title || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
+  if (value.includes("theatre") || value.includes("theater") || value.includes("athenaeum")) return "&#x1F3AD;";
+  if (value.includes("museum") || value.includes("gallery") || value.includes("history")) return "&#x1F3DB;";
+  if (value.includes("visitor") || value.includes("information") || value.includes("booth")) return "&#x2139;";
+  if (value.includes("community") || value.includes("assembly") || value.includes("centre") || value.includes("center")) return "&#x1F91D;";
   if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
   if (value.includes("health") || value.includes("medical")) return "&#x267F;";
   if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
@@ -134,10 +149,11 @@ function mapDiscoveryPlace(place) {
   return {
     id: `place-${place.place_id}`,
     category,
-    icon: activityIcon(category),
+    icon: activityIcon(category, place.feature_name),
     title: place.feature_name,
     location: `${place.theme}${distance}`,
     distanceKm: place.distance_km,
+    distanceOrigin: locationStatus === "granted" ? "your selected location" : "Melbourne CBD demonstration location",
     date: "Community place",
     price: "Details not confirmed",
     copy: place.relevance_reason || "A nearby place from the City of Melbourne discovery dataset.",
@@ -153,7 +169,7 @@ function mapDiscoveryPlace(place) {
   };
 }
 
-async function loadDatabaseActivities() {
+async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation.lng) {
   activitiesLoading = true;
   activitiesError = "";
   if (route === "social") renderSocial();
@@ -162,7 +178,7 @@ async function loadDatabaseActivities() {
     // limit=200 comfortably covers all Tier 1 discovery places currently in
     // the database (115) so the Activities map shows everything, not just
     // the closest handful. The server still enforces its own hard cap.
-    const response = await fetch("/api/nearby-places?lat=-37.8136&lng=144.9631&limit=200");
+    const response = await fetch(`/api/nearby-places?lat=${lat}&lng=${lng}&limit=200`);
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
@@ -178,6 +194,129 @@ async function loadDatabaseActivities() {
     activitiesLoading = false;
     if (route === "social") renderSocial();
   }
+}
+
+function newsIcon(category) {
+  // Map an SBS RSS category to a controlled icon. Same approach as
+  // activityIcon() - numeric HTML entities, so encoding stays predictable.
+  const value = `${category || ""}`.toLowerCase();
+  if (value.includes("health") || value.includes("covid")) return "&#x1FA7A;";
+  if (value.includes("politic")) return "&#x1F3DB;";
+  if (value.includes("finance")) return "&#x1F4B0;";
+  if (value.includes("life")) return "&#x1F91D;";
+  return "&#x1F4F0;";
+}
+
+function mapNewsArticle(article) {
+  // The CSV's first listed category becomes the badge tag; categories are
+  // semicolon-separated (e.g. "Australia; Health; Life").
+  const primaryCategory = (article.category || "").split(";")[0].trim() || "News";
+  return {
+    id: `news-${article.article_url || article.title}`,
+    icon: newsIcon(article.category),
+    tag: primaryCategory,
+    title: article.title,
+    copy: article.summary || "",
+    source: article.source || "SBS News",
+    publishedDate: article.published_date || "",
+    articleUrl: article.article_url || "",
+    saved: false,
+  };
+}
+
+async function loadNewsFeed() {
+  newsLoading = true;
+  newsError = "";
+  if (route === "social") renderSocial();
+
+  try {
+    const response = await fetch("/api/news");
+    if (!response.ok) throw new Error(`News API returned ${response.status}`);
+    const payload = await response.json();
+    const articles = Array.isArray(payload.articles) ? payload.articles : [];
+    if (!articles.length) throw new Error("News API returned no articles");
+    state.newsItems = articles.map(mapNewsArticle);
+    newsSource = "feed";
+  } catch (error) {
+    console.warn("[news] using static fallback:", error?.message ?? error);
+    state.newsItems = staticNewsItems;
+    newsSource = "static";
+    newsError = "The live news snapshot is unavailable, so sample headlines are shown.";
+  } finally {
+    newsLoading = false;
+    if (route === "social") renderSocial();
+  }
+}
+
+function formatNewsDate(isoDate) {
+  if (!isoDate) return "";
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const AU_STATE_ABBREVIATIONS = {
+  Victoria: "VIC",
+  "New South Wales": "NSW",
+  Queensland: "QLD",
+  "South Australia": "SA",
+  "Western Australia": "WA",
+  Tasmania: "TAS",
+  "Northern Territory": "NT",
+  "Australian Capital Territory": "ACT",
+};
+
+async function useMyLocation() {
+  if (!navigator.geolocation) {
+    locationStatus = "error";
+    locationMessage = "This browser doesn't support location access.";
+    if (route === "social") renderSocial();
+    return;
+  }
+
+  locationStatus = "locating";
+  locationMessage = "";
+  if (route === "social") renderSocial();
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      userLocation = { lat, lng, label: "Locating your suburb..." };
+      locationStatus = "granted";
+      if (route === "social") renderSocial();
+
+      // Reverse-geocode with Nominatim (OpenStreetMap) - same data source as
+      // the map tiles, so no separate API key is needed. If this fails we
+      // still keep the real coordinates and just show them directly.
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+          { headers: { Accept: "application/json" } },
+        );
+        if (!response.ok) throw new Error(`Reverse geocode returned ${response.status}`);
+        const place = await response.json();
+        const address = place.address || {};
+        const suburb = address.suburb || address.city_district || address.town || address.village || address.city;
+        const stateName = address.state ? AU_STATE_ABBREVIATIONS[address.state] || address.state : "";
+        userLocation.label = [suburb, stateName].filter(Boolean).join(", ") || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+      } catch (error) {
+        console.warn("[location] reverse geocode failed:", error?.message ?? error);
+        userLocation.label = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+      }
+
+      await loadDatabaseActivities(lat, lng);
+    },
+    (error) => {
+      locationStatus = "denied";
+      locationMessage =
+        error.code === error.PERMISSION_DENIED
+          ? "Location access was declined, so Melbourne CBD is shown instead."
+          : "Couldn't get your location right now, so Melbourne CBD is shown instead.";
+      if (route === "social") renderSocial();
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -447,8 +586,6 @@ function downloadLetter() {
   URL.revokeObjectURL(url);
 }
 
-// Unlock audio inside the send click, before waiting for the network response.
-// 用户点击发送时初始化声音；浏览器不支持声音也不会影响发送。
 function preparePaperSound() {
   if (!letterSoundEnabled) return;
   try {
@@ -670,6 +807,24 @@ async function rewriteLetter(tone) {
   if (current) current.innerHTML = letterWritingToolsContent();
 }
 
+function locationCard() {
+  const isDefault = locationStatus === "default" || locationStatus === "denied" || locationStatus === "error";
+  const buttonLabel = locationStatus === "locating" ? "Locating..." : "&#x1F4CD; Use my location";
+  return `
+    <div class="location-card">
+      <span class="location-card-info">
+        &#x1F4CD;
+        <span>
+          <span class="muted">${isDefault ? "Showing activities near" : "Using your current location"}</span>
+          <br /><strong>${escapeHtml(userLocation.label)}</strong>
+        </span>
+      </span>
+      <button class="outline-btn" data-action="use-my-location" ${locationStatus === "locating" ? "disabled" : ""}>${buttonLabel}</button>
+    </div>
+    ${locationMessage ? `<p class="muted small location-message">${escapeHtml(locationMessage)}</p>` : ""}
+  `;
+}
+
 function renderSocial() {
   const content = {
     activities: renderActivities(),
@@ -680,7 +835,7 @@ function renderSocial() {
   app.innerHTML = `
     ${pageHead("Social & Community", "Find nearby activities, helpful news, and save items for later")}
     <section class="container">
-      <div class="location-card">&#x1F4CD; <span><span class="muted">Demonstration location for distances</span><br /><strong>Melbourne CBD, VIC</strong></span></div>
+      ${locationCard()}
       <div class="tabs">
         <button class="tab ${socialTab === "activities" ? "active" : ""}" data-social-tab="activities">&#x1F5FA; Nearby Activities</button>
         <button class="tab ${socialTab === "news" ? "active" : ""}" data-social-tab="news">&#x1F4F0; Current News</button>
@@ -825,7 +980,15 @@ function renderNews() {
   // News cards are generated from `state.newsItems`.
   return `
     <h2>Useful news & information</h2>
-    <p class="muted section-copy">Simple, helpful news for healthy and connected living.</p>
+    <p class="muted section-copy">
+      ${
+        newsSource === "feed"
+          ? "A snapshot of recent SBS News headlines. Tap through to read the full article on SBS News."
+          : "Simple, helpful news for healthy and connected living."
+      }
+    </p>
+    ${newsLoading ? `<p class="info-note">Loading the latest news snapshot...</p>` : ""}
+    ${newsError ? `<p class="info-note warning-note">${newsError}</p>` : ""}
     <section class="social-grid">
       ${state.newsItems.map((n) => news(n)).join("")}
     </section>
@@ -834,16 +997,24 @@ function renderNews() {
 
 function news(n) {
   // Reusable card for one news item. Saved state controls the button label.
+  // n.icon is a controlled HTML entity (not user input), so it is not escaped -
+  // same treatment as a.icon in activity() below.
+  const dateLabel = formatNewsDate(n.publishedDate);
   return `
     <article class="news-card">
       <div class="card-top">
-        <span class="activity-icon">${escapeHtml(n.icon)}</span>
+        <span class="activity-icon">${n.icon}</span>
         <span class="small-badge blue-badge">${escapeHtml(n.tag)}</span>
         <button class="save-btn ${n.saved ? "saved" : ""}" data-save-news="${n.id}">&#x1F516; ${n.saved ? "Saved" : "Save"}</button>
       </div>
       <h3>${escapeHtml(n.title)}</h3>
       <p>${escapeHtml(n.copy)}</p>
-      <p class="muted small">Source: ${escapeHtml(n.source)}</p>
+      <p class="muted small">Source: ${escapeHtml(n.source)}${dateLabel ? ` &middot; ${dateLabel}` : ""}</p>
+      ${
+        n.articleUrl
+          ? `<a class="outline-btn wide news-link" href="${escapeHtml(n.articleUrl)}" target="_blank" rel="noopener noreferrer">Read full article on SBS News &#x2197;</a>`
+          : ""
+      }
     </article>
   `;
 }
@@ -1343,6 +1514,11 @@ document.addEventListener("change", (event) => {
 });
 
 function handleAction(action) {
+  if (action === "use-my-location") {
+    useMyLocation();
+    return;
+  }
+
   if (action === "download-letter") {
     downloadLetter();
     return;
@@ -1377,3 +1553,4 @@ function handleAction(action) {
 // data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
 render();
 loadDatabaseActivities();
+loadNewsFeed();
