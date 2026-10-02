@@ -458,6 +458,12 @@ function ensureSpeechBubble() {
 }
 
 function speak(message, options = {}) {
+  // In chat, tips/reminders belong with the same companion, not over the panel.
+  // 聊天打开时，把提示和提醒放入聊天，不用另一个气泡覆盖它。
+  if (window.PetChat?.isOpen()) {
+    window.PetChat.notice(message, options.kind ?? 'companion');
+    return;
+  }
   // Show only safe, short text above the Pet; never interpret model output as HTML.
   const text = limitPetWords(message, 10);
   if (!text) return;

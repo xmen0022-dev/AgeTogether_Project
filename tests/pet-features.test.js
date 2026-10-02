@@ -30,6 +30,15 @@ test("limits Pet speech to the requested word count", () => {
   assert.equal(limitPetWords("Please drink some water and rest today", 5), "Please drink some water and");
 });
 
+test('open chat receives reminders instead of a second overlapping speech bubble', () => {
+  const notices = [];
+  sandbox.window = { PetChat: { isOpen: () => true, notice: (...args) => notices.push(args) } };
+  try {
+    vm.runInNewContext("speak('Time for water', { kind: 'reminder' })", sandbox);
+    assert.deepEqual(notices, [['Time for water', 'reminder']]);
+  } finally { delete sandbox.window; }
+});
+
 test("returns a localised tip only on every tenth click", () => {
   assert.equal(nextHealthTip(9, 0, "en-AU"), null);
   const tip = nextHealthTip(10, 0, "SC");

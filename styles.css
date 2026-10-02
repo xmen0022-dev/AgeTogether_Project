@@ -1442,6 +1442,67 @@ textarea {
 }
 
 /* Pet speech sits just above the actual fixed Pet position, even for photo companions. */
+.pet-chat {
+  position: fixed;
+  z-index: 1001;
+  right: 24px;
+  bottom: 112px;
+  width: min(410px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 140px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 2px solid #b88e79;
+  border-radius: 28px 30px 24px 28px;
+  background: #fffaf5;
+  box-shadow: 0 12px 40px #26323826;
+  color: #18364a;
+}
+.pet-chat::after {
+  content: '';
+  position: absolute;
+  bottom: -13px;
+  right: 27px;
+  width: 24px;
+  height: 24px;
+  background: #fffaf5;
+  border-right: 2px solid #b88e79;
+  border-bottom: 2px solid #b88e79;
+  transform: skewY(15deg) rotate(45deg);
+  border-radius: 0 0 6px 0;
+}
+.companion-history-messages { max-height: 480px; overflow-y: auto; margin-bottom: 16px; overscroll-behavior: contain; }
+#companion-history .pet-chat-message { max-width: 90%; }
+#companion-history .pet-chat-message.is-user { margin-left: auto; }
+#companion-history .pet-chat-status { margin: 12px 0; }
+#companion-history .pet-chat-privacy { margin-top: 12px; }
+.pet-chat[hidden] { display: none; }
+.pet-chat-peek { display: none; }
+.pet-chat.is-compact { width: min(260px, calc(100vw - 32px)); padding: 14px 18px; right: 24px; left: auto; }
+.pet-chat.is-compact > :not(.pet-chat-peek) { display: none; }
+.pet-chat.is-compact .pet-chat-peek { display: block; border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.1rem; line-height: 1.5; text-align: left; padding: 0; cursor: pointer; overflow-wrap: anywhere; min-height: 44px; }
+.pet-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pet-chat-header h2 { margin: 0; font-size: 1.35rem; }
+.pet-chat-header button { min-height: 44px; font-size: 1rem; }
+.pet-chat-messages { overflow-y: auto; flex: 1; min-height: 80px; overscroll-behavior: contain; }
+.pet-chat-message { padding: 12px 14px; margin: 0 20px 12px 0; border-radius: 16px 16px 16px 4px; background: #fbe7dc; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.1rem; line-height: 1.6; }
+.pet-chat-message.is-user { margin-left: 20px; margin-right: 0; background: #e5f0e9; border-radius: 16px 16px 4px 16px; }
+.pet-chat-message.is-tip, .pet-chat-message.is-reminder { background: #fff0c9; }
+.pet-chat-form { display: flex; gap: 10px; align-items: stretch; }
+.pet-chat-form textarea { flex: 1; min-width: 0; resize: vertical; max-height: 120px; font: inherit; font-size: 1.1rem; padding: 12px; border: 1px solid #c8bdb4; border-radius: 12px; }
+.pet-chat-form button { min-width: 72px; min-height: 48px; padding: 12px; border: 0; border-radius: 12px; background: #52866c; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.pet-chat-form button:hover { background: #3e6c54; }
+.pet-chat-form button:disabled { opacity: 0.65; cursor: wait; }
+.pet-chat-status, .pet-chat-privacy { margin: 0; font-size: 1rem; line-height: 1.4; }
+.pet-chat-status:empty { display: none; }
+.pet-chat-privacy { color: #536674; }
+.pet-chat :focus-visible { outline: 3px solid #216851; outline-offset: 3px; }
+.pet-chat-open .pet-speech { display: none; }
+@media (max-width: 600px) {
+  .pet-chat { right: 8px; left: 8px; bottom: 96px; width: auto; max-height: calc(100dvh - 120px); padding: 16px; border-radius: 22px; }
+}
+
 .pet-speech {
   position: fixed;
   z-index: 16;

@@ -1157,9 +1157,7 @@ function renderAI() {
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
         <section class="panel">
-          <h2>Ask your companion</h2>
-          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
-          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
+          <div id="companion-history"></div>
           <p class="muted quick-label"><strong>Or tap a question to ask:</strong></p>
           <div class="quick-questions">
             <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
@@ -1199,7 +1197,7 @@ function renderAI() {
           </div>
         </section>
         <section class="ai-reminders panel">
-          <h2>Gentle daily reminders</h2>
+          <h2>Daily reminders</h2>
           <p class="muted small">These reminders run while this page is open. You can change the times anytime.</p>
           <div class="reminder-list">
             ${reminderRow("water", "Water", "Have a little drink.")}
@@ -1214,11 +1212,13 @@ function renderAI() {
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
   window.AgePet?.mountSetup();
+  window.PetChat?.mountHistory(document.querySelector('#companion-history'));
 }
 
 // Send one named task to the server and render the response as plain text.
 // 灏嗕竴涓懡鍚嶄换鍔″彂閫佸埌鏈嶅姟绔紝骞朵互绾枃鏈畨鍏ㄦ樉绀鸿繑鍥炵粨鏋溿€?
 async function askCompanion(task, input) {
+  if (window.PetChat?.sendQuestion) return window.PetChat.sendQuestion(input, task);
   const answer = document.querySelector("#ai-answer");
   if (!answer || !input.trim()) return;
 
@@ -1260,6 +1260,7 @@ function render() {
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
+  if (!pagesWithPet.has(route)) window.PetChat?.close();
 
   if (route === "home") renderHome();
   if (route === "letter") renderLetter();
@@ -1498,6 +1499,7 @@ document.addEventListener("change", (event) => {
   const preference = event.target.closest("[data-ai-preference]");
   if (preference) {
     aiPreferences[preference.dataset.aiPreference] = preference.value;
+    window.PetChat?.refreshLanguage();
     return;
   }
 
