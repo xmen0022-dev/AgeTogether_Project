@@ -1485,6 +1485,7 @@ textarea {
 .pet-chat > .pet-chat-form { padding: 8px; border: 1px solid #d9d2cb; border-radius: 14px; background: #fffaf5; box-shadow: 0 4px 12px #2632381a; }
 .pet-chat.is-compact > :not(.pet-chat-peek) { display: none; }
 .pet-chat.is-compact .pet-chat-peek { display: block; }
+.pet-chat-reply { display: block; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; }
 .pet-chat #pet-chat-input { padding: 8px; min-height: 44px; max-height: 70px; font-size: 1rem; }
 .pet-chat #pet-chat-send { min-width: 54px; padding: 8px; font-size: 1rem; }
 .pet-chat #pet-chat-close { min-width: 32px; padding: 4px; background: transparent; color: #18364a; font-size: 1.5rem; }

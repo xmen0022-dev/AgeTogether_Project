@@ -13,6 +13,7 @@
   let pending = false;
   let compact = false;
   let peek;
+  let replyText;
   // One session transcript for both surfaces; no persistent storage.
   // 两个入口共享本次对话，刷新后清空，不写入本地存储。
   const transcript = [];
@@ -32,6 +33,7 @@
     panel.style.right = `${Math.max(12, window.innerWidth - right)}px`;
     panel.style.left = 'auto';
     panel.style.maxHeight = `${Math.max(60, top - 48)}px`;
+    replyText.style.maxHeight = `${Math.max(44, Math.min(320, top - 80 - (compact ? 0 : 90)))}px`;
   }
 
   function element(tag, id, className = '') {
@@ -85,6 +87,8 @@
     privacy = element('p', 'pet-chat-privacy', 'pet-chat-privacy');
     peek = element('button', 'pet-chat-peek', 'pet-chat-peek');
     peek.type = 'button';
+    replyText = element('span', 'pet-chat-reply', 'pet-chat-reply');
+    peek.append(replyText);
     peek.setAttribute('aria-live', 'polite');
     peek.addEventListener('click', open);
     panel.append(header, messages, status, peek, form, privacy);
@@ -123,12 +127,11 @@
     if (historySend) historySend.disabled = pending;
     const latest = transcript.findLast(entry => entry.kind !== 'user');
     const fullText = text || latest?.text || languageCopy().hello;
-    // Compact bubble is a preview, not a replacement for the full record.
-    // 小气泡只是预览，完整回复保留在对话记录里。
-    const words = fullText.split(/\s+/);
-    const shortText = words.length > 12 ? `${words.slice(0, 12).join(' ')}…` : fullText;
-    peek.textContent = shortText.length > 80 ? `${shortText.slice(0, 80)}…` : shortText;
-    peek.setAttribute('aria-label', `${languageCopy().input}: ${peek.textContent}`);
+    // Keep the full reply; only its visible height is limited, with scrolling.
+    // 保留完整回复；只限制显示高度，长内容可在气泡内滚动。
+    replyText.textContent = fullText;
+    replyText.scrollTop = 0;
+    peek.setAttribute('aria-label', `${languageCopy().input}: ${fullText}`);
     positionAbovePet();
   }
 

@@ -158,10 +158,11 @@ test('sending folds Pet into a small bubble and clicking it reopens the composer
   f.nodes.get('#pet-chat-input').value = 'Hello';
   const pending = f.nodes.get('#pet-chat-form').listeners.submit({ preventDefault() {} });
   assert.match(f.nodes.get('#pet-chat').className, /is-compact/);
-  assert.match(f.nodes.get('#pet-chat-peek').textContent, /想/);
+  assert.match(f.nodes.get('#pet-chat-reply').textContent, /想/);
   finish({ ok: true, json: async () => ({ text: 'A very long answer '.repeat(30) }) });
   await pending;
-  assert.ok(f.nodes.get('#pet-chat-peek').textContent.length < 180);
+  assert.equal(f.nodes.get('#pet-chat-reply').textContent, 'A very long answer '.repeat(30).trim());
+  assert.ok(parseFloat(f.nodes.get('#pet-chat-reply').style.maxHeight) <= 320);
   assert.equal(f.nodes.get('#pet-chat-messages').children.at(-1).textContent, 'A very long answer '.repeat(30).trim());
   f.nodes.get('#pet-chat-peek').listeners.click();
   assert.doesNotMatch(f.nodes.get('#pet-chat').className, /is-compact/);
