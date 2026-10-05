@@ -20,6 +20,20 @@
   let feedback = '';
   const languageCopy = () => copy[window.aiPreferences?.language] || copy['en-AU'];
 
+  function positionAbovePet() {
+    if (!panel || !opened) return;
+    // Measure the actual image, not an assumed fixed avatar height.
+    // 根据实际图片边界定位，给气泡尾巴和 Pet 的轻微动作留出空间。
+    const buttonRect = pet.getBoundingClientRect();
+    const photoRect = pet.querySelector('.pet-photo')?.getBoundingClientRect();
+    const top = Math.min(buttonRect.top, photoRect?.top ?? buttonRect.top);
+    const right = Math.max(buttonRect.right, photoRect?.right ?? buttonRect.right);
+    panel.style.bottom = `${Math.max(12, window.innerHeight - top + 36)}px`;
+    panel.style.right = `${Math.max(12, window.innerWidth - right)}px`;
+    panel.style.left = 'auto';
+    panel.style.maxHeight = `${Math.max(60, top - 48)}px`;
+  }
+
   function element(tag, id, className = '') {
     const node = document.createElement(tag);
     node.id = id;
@@ -52,7 +66,7 @@
     closeButton = element('button', 'pet-chat-close', 'outline-btn');
     closeButton.type = 'button';
     closeButton.addEventListener('click', close);
-    header.append(title, closeButton);
+    header.append(title);
     messages = element('div', 'pet-chat-messages', 'pet-chat-messages');
     messages.setAttribute('role', 'log');
     messages.setAttribute('aria-live', 'polite');
@@ -61,20 +75,19 @@
     status.setAttribute('role', 'status');
     form = element('form', 'pet-chat-form', 'pet-chat-form');
     input = element('textarea', 'pet-chat-input');
-    input.rows = 2;
+    input.rows = 1;
     input.maxLength = 2000;
     send = element('button', 'pet-chat-send', 'solid-btn');
     send.type = 'submit';
-    form.append(input, send);
+    form.append(input, send, closeButton);
     form.addEventListener('submit', submit);
     panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); close(); } });
     privacy = element('p', 'pet-chat-privacy', 'pet-chat-privacy');
-    panel.append(header, messages, status, form, privacy);
     peek = element('button', 'pet-chat-peek', 'pet-chat-peek');
     peek.type = 'button';
     peek.setAttribute('aria-live', 'polite');
     peek.addEventListener('click', open);
-    panel.append(peek);
+    panel.append(header, messages, status, peek, form, privacy);
     document.body.append(panel);
     appendMessage(languageCopy().hello, 'companion');
   }
@@ -83,9 +96,11 @@
     if (!panel) return;
     const words = languageCopy();
     title.textContent = words.title;
-    closeButton.textContent = words.close;
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', words.close);
     input.placeholder = words.input;
     input.setAttribute('aria-label', words.input);
+    input.setAttribute('aria-description', words.privacy);
     send.textContent = words.send;
     privacy.textContent = words.privacy;
     pet.setAttribute('aria-label', words.input);
@@ -114,6 +129,7 @@
     const shortText = words.length > 12 ? `${words.slice(0, 12).join(' ')}…` : fullText;
     peek.textContent = shortText.length > 80 ? `${shortText.slice(0, 80)}…` : shortText;
     peek.setAttribute('aria-label', `${languageCopy().input}: ${peek.textContent}`);
+    positionAbovePet();
   }
 
   function mountHistory(host) {
@@ -161,6 +177,7 @@
     panel.hidden = false;
     document.body.classList.add('pet-chat-open');
     pet.setAttribute('aria-expanded', 'true');
+    positionAbovePet();
     input.focus();
   }
 
@@ -180,6 +197,7 @@
     input.value = '';
     compact = true;
     panel.className = 'pet-chat is-compact';
+    positionAbovePet();
     pet.setAttribute('aria-expanded', 'false');
     pet.focus();
     const answered = await sendQuestion(question);
@@ -231,5 +249,12 @@
   pet.setAttribute('aria-controls', 'pet-chat');
   pet.setAttribute('aria-expanded', 'false');
   pet.addEventListener('click', () => opened && !compact ? close() : open());
+  window.addEventListener('resize', positionAbovePet);
+  pet.addEventListener('load', positionAbovePet, true);
+  // Photo changes resize the avatar; remeasure without polling or extra timers.
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(positionAbovePet);
+    observer.observe(pet);
+  }
   window.PetChat = { open, close, isOpen: () => opened, notice, refreshLanguage, mountHistory, sendQuestion };
 })();

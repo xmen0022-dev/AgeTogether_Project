@@ -1447,12 +1447,12 @@ textarea {
   z-index: 1001;
   right: 24px;
   bottom: 112px;
-  width: min(410px, calc(100vw - 32px));
+  width: min(320px, calc(100vw - 32px));
   max-height: min(640px, calc(100dvh - 140px));
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: 10px;
+  padding: 12px 16px;
   border: 2px solid #b88e79;
   border-radius: 28px 30px 24px 28px;
   background: #fffaf5;
@@ -1478,10 +1478,14 @@ textarea {
 #companion-history .pet-chat-status { margin: 12px 0; }
 #companion-history .pet-chat-privacy { margin-top: 12px; }
 .pet-chat[hidden] { display: none; }
-.pet-chat-peek { display: none; }
-.pet-chat.is-compact { width: min(260px, calc(100vw - 32px)); padding: 14px 18px; right: 24px; left: auto; }
+.pet-chat > .pet-chat-header, .pet-chat > .pet-chat-messages, .pet-chat > .pet-chat-status, .pet-chat > .pet-chat-privacy { display: none; }
+.pet-chat-peek { display: block; border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.05rem; line-height: 1.45; text-align: left; padding: 0; cursor: pointer; overflow-wrap: anywhere; }
+.pet-chat.is-compact { width: fit-content; max-width: min(230px, calc(100vw - 32px)); padding: 10px 14px; right: 24px; left: auto; }
 .pet-chat.is-compact > :not(.pet-chat-peek) { display: none; }
-.pet-chat.is-compact .pet-chat-peek { display: block; border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.1rem; line-height: 1.5; text-align: left; padding: 0; cursor: pointer; overflow-wrap: anywhere; min-height: 44px; }
+.pet-chat.is-compact .pet-chat-peek { display: block; }
+.pet-chat #pet-chat-input { padding: 8px; min-height: 44px; max-height: 70px; font-size: 1rem; }
+.pet-chat #pet-chat-send { min-width: 54px; padding: 8px; font-size: 1rem; }
+.pet-chat #pet-chat-close { min-width: 32px; padding: 4px; background: transparent; color: #18364a; font-size: 1.5rem; }
 .pet-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pet-chat-header h2 { margin: 0; font-size: 1.35rem; }
 .pet-chat-header button { min-height: 44px; font-size: 1rem; }

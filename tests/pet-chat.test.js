@@ -15,11 +15,13 @@ function fixture() {
     focus() { this.focused = true; },
   });
   const pet = makeNode();
+  pet.getBoundingClientRect = () => ({ top: 700, right: 370, left: 300 });
+  pet.querySelector = () => null;
   nodes.set('#pet', pet);
   const body = makeNode();
   body.classList = { add() {}, remove() {} };
   const context = {
-    window: { aiPreferences: { language: 'SC', style: 'simple' } },
+    window: { innerWidth: 390, innerHeight: 844, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, aiPreferences: { language: 'SC', style: 'simple' } },
     document: {
       body,
       createElement() { const node = makeNode(); Object.defineProperty(node, 'id', { set(id) { nodes.set(`#${id}`, node); } }); return node; },
@@ -174,4 +176,24 @@ test('failed sending restores the expanded composer with the original question',
   await f.nodes.get('#pet-chat-form').listeners.submit({ preventDefault() {} });
   assert.doesNotMatch(f.nodes.get('#pet-chat').className, /is-compact/);
   assert.equal(f.nodes.get('#pet-chat-input').value, 'My question');
+});
+
+test('Pet composer uses one input row and an accessible icon-only close control', () => {
+  const f = fixture();
+  f.chat.open();
+  assert.equal(f.nodes.get('#pet-chat-input').rows, 1);
+  assert.equal(f.nodes.get('#pet-chat-close').textContent, '×');
+  assert.equal(f.nodes.get('#pet-chat-close').attributes['aria-label'], '关闭聊天');
+});
+
+test('bubble sits above the visible photo and follows viewport resizing', () => {
+  const f = fixture();
+  let photoTop = 620;
+  f.pet.querySelector = () => ({ getBoundingClientRect: () => ({ top: photoTop, right: 370, left: 240 }) });
+  f.chat.open();
+  const panel = f.nodes.get('#pet-chat');
+  assert.ok(parseFloat(panel.style.bottom) >= 844 - 620 + 26);
+  photoTop = 560;
+  f.context.window.listeners.resize();
+  assert.ok(parseFloat(panel.style.bottom) >= 844 - 560 + 26);
 });
