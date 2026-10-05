@@ -1451,24 +1451,25 @@ textarea {
   max-height: min(640px, calc(100dvh - 140px));
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-  border: 2px solid #b88e79;
-  border-radius: 28px 30px 24px 28px;
-  background: #fffaf5;
-  box-shadow: 0 12px 40px #26323826;
-  color: #18364a;
+  gap: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #242424;
 }
-.pet-chat::after {
+/* Only the reply is inside the comic balloon. The composer is a separate tray. */
+/* 漫画气泡内只有回复；临时输入区在气泡之外。 */
+.pet-chat-peek::after {
   content: '';
   position: absolute;
   bottom: -13px;
   right: 27px;
   width: 24px;
   height: 24px;
-  background: #fffaf5;
-  border-right: 2px solid #b88e79;
-  border-bottom: 2px solid #b88e79;
+  background: white;
+  border-right: 2px solid #242424;
+  border-bottom: 2px solid #242424;
   transform: skewY(15deg) rotate(45deg);
   border-radius: 0 0 6px 0;
 }
@@ -1479,8 +1480,9 @@ textarea {
 #companion-history .pet-chat-privacy { margin-top: 12px; }
 .pet-chat[hidden] { display: none; }
 .pet-chat > .pet-chat-header, .pet-chat > .pet-chat-messages, .pet-chat > .pet-chat-status, .pet-chat > .pet-chat-privacy { display: none; }
-.pet-chat-peek { display: block; border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.05rem; line-height: 1.45; text-align: left; padding: 0; cursor: pointer; overflow-wrap: anywhere; }
-.pet-chat.is-compact { width: fit-content; max-width: min(230px, calc(100vw - 32px)); padding: 10px 14px; right: 24px; left: auto; }
+.pet-chat-peek { position: relative; align-self: flex-end; display: block; max-width: 250px; border: 2px solid #242424; border-radius: 25px 28px 24px 26px; background: white; box-shadow: -3px 5px 0 #242424; color: inherit; font: inherit; font-size: 1.05rem; line-height: 1.45; text-align: left; padding: 12px 16px; cursor: pointer; overflow-wrap: anywhere; }
+.pet-chat.is-compact { width: fit-content; max-width: min(250px, calc(100vw - 32px)); padding: 0; right: 24px; left: auto; }
+.pet-chat > .pet-chat-form { padding: 8px; border: 1px solid #d9d2cb; border-radius: 14px; background: #fffaf5; box-shadow: 0 4px 12px #2632381a; }
 .pet-chat.is-compact > :not(.pet-chat-peek) { display: none; }
 .pet-chat.is-compact .pet-chat-peek { display: block; }
 .pet-chat #pet-chat-input { padding: 8px; min-height: 44px; max-height: 70px; font-size: 1rem; }
@@ -1504,7 +1506,7 @@ textarea {
 .pet-chat :focus-visible { outline: 3px solid #216851; outline-offset: 3px; }
 .pet-chat-open .pet-speech { display: none; }
 @media (max-width: 600px) {
-  .pet-chat { right: 8px; left: 8px; bottom: 96px; width: auto; max-height: calc(100dvh - 120px); padding: 16px; border-radius: 22px; }
+  .pet-chat { right: 8px; left: 8px; bottom: 96px; width: min(320px, calc(100vw - 24px)); max-height: calc(100dvh - 120px); padding: 0; }
 }
 
 .pet-speech {
