@@ -3,6 +3,7 @@
 (() => {
   const pet = document.querySelector('#pet');
   if (!pet) return;
+  // yuyan wenan：英文、简体、繁体的界面文字。
   const copy = {
     'en-AU': { title: 'Your companion', hello: "I'm here. What would you like to talk about?", input: 'Talk with your companion', send: 'Send', close: 'Close chat', thinking: 'Thinking…', error: 'I could not connect just now. Please try again.', privacy: 'Your message is sent to AI. Please leave out private details.', empty: 'I did not get an answer. Please try again.' },
     SC: { title: '你的伙伴', hello: '我在这里。你想聊些什么？', input: '和伙伴聊聊', send: '发送', close: '关闭聊天', thinking: '正在想一想…', error: '暂时无法连接，请重试。', privacy: '消息会发送给 AI，请不要填写私人信息。', empty: '暂时没有收到回答，请重试。' },
@@ -16,11 +17,13 @@
   let replyText;
   // One session transcript for both surfaces; no persistent storage.
   // 两个入口共享本次对话，刷新后清空，不写入本地存储。
+  // linshi duihua jilu：只存内存，刷新清空，不是数据库保存。
   const transcript = [];
   let historyMessages, historyStatus, historySend, historyTitle, historyInput, historyPrivacy;
   let feedback = '';
   const languageCopy = () => copy[window.aiPreferences?.language] || copy['en-AU'];
 
+  // tiaozheng qipao weizhi：根据 Pet 图片大小，把气泡放到图片上方。
   function positionAbovePet() {
     if (!panel || !opened) return;
     // Measure the actual image, not an assumed fixed avatar height.
@@ -36,6 +39,7 @@
     replyText.style.maxHeight = `${Math.max(44, Math.min(320, top - 80 - (compact ? 0 : 90)))}px`;
   }
 
+  // chuangjian yemian yuansu：创建元素并设置 ID 和样式类。
   function element(tag, id, className = '') {
     const node = document.createElement(tag);
     node.id = id;
@@ -43,12 +47,15 @@
     return node;
   }
 
+  // Share the conversation between both views. / liang ge jiemian gongxiang duihua
+  // jilu bing tongbu xiaoxi：加入临时记录，同步到 Pet 和 AI 页面。
   function appendMessage(text, kind) {
     transcript.push({ text, kind });
     renderMessage(messages, text, kind);
     if (historyMessages) renderMessage(historyMessages, text, kind);
   }
 
+  // xianshi xiaoxi：只负责显示，不负责保存到数据库或本地存储。
   function renderMessage(host, text, kind) {
     const row = element('p', '', `pet-chat-message is-${kind}`);
     // Model output is always plain text, never HTML. / AI 输出仅作为文本展示。
@@ -57,6 +64,7 @@
     host.scrollTop = host.scrollHeight;
   }
 
+  // chuangjian liaotian kuang：第一次使用时创建，之后复用。
   function ensurePanel() {
     if (panel) return;
     panel = element('section', 'pet-chat', 'pet-chat');
@@ -96,6 +104,7 @@
     appendMessage(languageCopy().hello, 'companion');
   }
 
+  // gengxin yuyan：让两个聊天入口的界面文字跟随语言设置。
   function refreshLanguage() {
     if (!panel) return;
     const words = languageCopy();
@@ -119,6 +128,7 @@
     syncStatus();
   }
 
+  // gengxin zhuangtai he huifu：显示等待、错误或完整回复。
   function syncStatus() {
     const text = pending ? languageCopy().thinking : feedback ? languageCopy().error : '';
     status.textContent = text;
@@ -135,6 +145,8 @@
     positionAbovePet();
   }
 
+  // Display the shared conversation history. / xianshi gongxiang de duihua jilu
+  // gongxiang duihua jilu：在 AI Companion 页面显示同一份临时记录。
   function mountHistory(host) {
     if (!host) return;
     ensurePanel();
@@ -171,6 +183,7 @@
     refreshLanguage();
   }
 
+  // dakai shuru kuang：展开输入区并让光标进入输入框，不自动请求 AI。
   function open() {
     ensurePanel();
     refreshLanguage();
@@ -184,6 +197,7 @@
     input.focus();
   }
 
+  // guanbi liaotian kuang：隐藏气泡和输入区，保留本次临时记录。
   function close() {
     if (!panel) return;
     opened = false;
@@ -193,6 +207,7 @@
     pet.focus();
   }
 
+  // fasong bing shouqi shuru：提交问题后收起输入区，只留回复气泡。
   async function submit(event) {
     event.preventDefault();
     const question = input.value.trim();
@@ -211,6 +226,7 @@
     }
   }
 
+  // qingqiu AI huifu：两个入口共用请求逻辑，防止重复发送。
   async function sendQuestion(value, task = 'ask') {
     const question = String(value || '').trim();
     if (pending || !question || question.length > 2000) return false;
@@ -220,10 +236,12 @@
     syncStatus();
     appendMessage(question, 'user');
     const controller = new AbortController();
+    // chaoshi quxiao：45 秒没完成就取消请求。
     const timeout = setTimeout(() => controller.abort(), 45000);
     try {
       // Reuse server safety rules and the selected output language/style.
       // 复用服务端安全规则，以及用户选定的语言和表达风格。
+      // qingqiu ziji de fuwuqi：前端请求本站接口，后端再调用 DeepSeek。
       const response = await fetch('/api/ask', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
@@ -243,6 +261,7 @@
     }
   }
 
+  // jiaru tixing：聊天打开时，把提醒或小贴士加入同一份记录。
   function notice(message, kind = 'companion') {
     if (!opened || !message) return;
     appendMessage(message, kind);
@@ -251,6 +270,7 @@
 
   pet.setAttribute('aria-controls', 'pet-chat');
   pet.setAttribute('aria-expanded', 'false');
+  // dianji Pet：切换输入区；只有回复气泡时，点击可以重新输入。
   pet.addEventListener('click', () => opened && !compact ? close() : open());
   window.addEventListener('resize', positionAbovePet);
   pet.addEventListener('load', positionAbovePet, true);
@@ -259,5 +279,6 @@
     const observer = new ResizeObserver(positionAbovePet);
     observer.observe(pet);
   }
+  // daochu gongneng：供 script.js 和 pet.js 调用同一个聊天模块。
   window.PetChat = { open, close, isOpen: () => opened, notice, refreshLanguage, mountHistory, sendQuestion };
 })();

@@ -87,7 +87,7 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
+  // My feature / 我的功能：应用五档全局字号中的一档。
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
   document.body.classList.add(`text-size-${textSizeLevel}`);
@@ -117,10 +117,10 @@ function notificationCounts() {
 }
 
 function markNotificationsSeen(routeName) {
-  // My feature / 鎴戠殑鍔熻兘锛歶pdate the read baseline for the section the user opened.
+  // My feature / 我的功能：更新用户打开页面的已读基准。
   // This makes notification chips disappear after they are clicked or
   // after the user manually visits the related page.
-  // 鐢ㄦ埛鐐瑰嚮閫氱煡鎴栦富鍔ㄨ繘鍏ュ搴旈〉闈㈠悗锛岃繖閲屼細鎶婂綋鍓嶆暟閲忚涓哄凡璇诲熀鍑嗭紝
+  // 用户点击通知或进入对应页面后，将当前通知数量记为已读基准。
   const counts = notificationCounts();
   if (routeName === "social") notificationSeen.social = counts.social;
 }
@@ -320,7 +320,7 @@ async function useMyLocation() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Home / 棣栭〉                                                          */
+/* Home / 首页                                                          */
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
@@ -679,7 +679,7 @@ async function sendLetter() {
   }
 }
 
-/* Social / 绀句氦涓庣ぞ鍖烘椿鍔?                                             */
+/* Social / 社交与社区活动                                               */
 /* ------------------------------------------------------------------ */
 
 // 仅在本机记录活动；刷新或数据库重载后按稳定 ID 恢复。
@@ -1050,7 +1050,7 @@ function renderSaved() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Profile / 涓汉璧勬枡                                                   */
+/* Profile / 个人资料                                                    */
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
@@ -1061,11 +1061,12 @@ function renderProfile() {
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
       <!--
-        My feature / 鎴戠殑鍔熻兘锛歠ive-level text-size control for accessibility.
+        My feature / 我的功能：五档字号控制，方便阅读。
         These buttons only change the visual reading size of the prototype;
         they do not change profile data or require any account/login information.
-        杩欓噷鎻愪緵 1 鍒?5 妗ｉ槄璇诲瓧鍙疯皟鑺傦紝鍙奖鍝嶉〉闈㈡樉绀哄ぇ灏忥紝
-        涓嶄慨鏀逛釜浜鸿祫鏂欙紝涔熶笉闇€瑕佺櫥褰曡处鍙枫€?      -->
+        提供 1 到 5 档阅读字号，只调整页面显示大小，
+        不修改个人资料，也不需要账户或登录信息。
+      -->
       <section class="panel profile-panel">
         <h2>Text size</h2>
         <div class="text-size-picker" aria-label="Text size">
@@ -1123,7 +1124,7 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI page and Companion integration / AI 椤甸潰鍜屾瀹犻泦鎴?               */
+/* AI page and Companion integration / AI 页面与伙伴集成                  */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
@@ -1173,7 +1174,9 @@ function renderAI() {
           Companion setup mount point.
           pet.js fills this empty container with the photo picker, status card,
           and companion history after the AI page has been rendered.
-          Companion 璁剧疆鍖哄煙鐨勬寕杞界偣銆?          AI 椤甸潰娓叉煋瀹屾垚鍚庯紝pet.js 浼氭妸鐓х墖閫夋嫨鍣ㄣ€佺姸鎬佸崱鐗囧拰鍘嗗彶璁板綍濉埌杩欓噷銆?        -->
+          Companion 设置区域的挂载点。
+          AI 页面渲染后，pet.js 在这里放入照片选择器、状态卡片和照片历史。
+        -->
         <section class="panel" id="pet-setup"></section>
         <section class="ai-preferences panel">
           <h2>How would you like me to speak?</h2>
@@ -1216,7 +1219,7 @@ function renderAI() {
 }
 
 // Send one named task to the server and render the response as plain text.
-// 灏嗕竴涓懡鍚嶄换鍔″彂閫佸埌鏈嶅姟绔紝骞朵互绾枃鏈畨鍏ㄦ樉绀鸿繑鍥炵粨鏋溿€?
+// 将指定任务发送到服务端，并以纯文本安全显示返回结果。
 async function askCompanion(task, input) {
   if (window.PetChat?.sendQuestion) return window.PetChat.sendQuestion(input, task);
   const answer = document.querySelector("#ai-answer");
@@ -1239,7 +1242,7 @@ async function askCompanion(task, input) {
     answer.className = "ai-answer";
     answer.textContent = payload.text || "Your companion did not have an answer for that one.";
     // Keep the full answer in the panel, but show a short, safe version above Pet.
-    // 瀹屾暣绛旀鐣欏湪闈㈡澘涓紝鍚屾椂鎶婄畝鐭函鏂囨湰鍥炲鏄剧ず鍦?Pet 澶撮《銆?
+    // 后备路径：完整答案留在面板，简短纯文本回复显示在 Pet 上方。
     window.AgePet?.speak(payload.text, { kind: "ai" });
   } catch (error) {
     if (requestNumber !== aiRequestNumber) return;
@@ -1249,7 +1252,7 @@ async function askCompanion(task, input) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Router / render / 璺敱涓庢覆鏌?                                         */
+/* Router / render / 路由与渲染                                          */
 /* ------------------------------------------------------------------ */
 
 function render() {
@@ -1270,7 +1273,7 @@ function render() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Event handling / 浜嬩欢澶勭悊                                             */
+/* Event handling / 事件处理                                             */
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
@@ -1294,7 +1297,8 @@ document.addEventListener("click", (event) => {
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
-  // 浜嬩欢濮旀墭鎶婁氦浜掗€昏緫闆嗕腑鍦ㄤ竴涓湴鏂广€?  // 姣忔 render 鍚庝笉鐢ㄩ噸鏂扮粰鎸夐挳缁戝畾鐩戝惉鍣紝鍙渶瑕佺敱 document 缁熶竴鍒ゆ柇鐐瑰嚮浜嗗摢涓?data-* 鍏冪礌銆?
+  // 事件委托集中处理交互，无需每次渲染后重新绑定按钮监听。
+  // document 根据被点击元素的 data-* 属性判断操作。
   // Navigation: any element with data-route changes the active screen. The
   // render functions recreate the visible page from the current state object.
   const routeTarget = event.target.closest("[data-route]");
@@ -1315,10 +1319,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- AI Companion / AI 鍔╂墜 ---------------- */
+  /* ---------------- AI Companion / AI 助手 ---------------- */
 
   // Quick questions use the same server task as free-form questions.
-  // 蹇嵎闂鍜岃嚜鐢辫緭鍏ュ叡鐢ㄥ悓涓€涓湇鍔＄ ask 浠诲姟銆?
+  // 快捷问题和自由输入共用服务端的 ask 任务。
   const aiQuestion = event.target.closest("[data-ai-question]");
   if (aiQuestion) {
     askCompanion("ask", aiQuestion.dataset.aiQuestion);
@@ -1326,7 +1330,7 @@ document.addEventListener("click", (event) => {
   }
 
   // Action buttons provide carefully worded prompts for common use cases.
-  // 鎿嶄綔鎸夐挳浣跨敤棰勫厛鍐欏ソ鐨勬彁绀猴紝闄嶄綆鐢ㄦ埛缁勭粐闂鐨勮礋鎷呫€?
+  // 操作按钮使用预设提示，减少用户组织问题的负担。
   const aiAction = event.target.closest("[data-ai-action]");
   if (aiAction) {
     const action = aiAction.dataset.aiAction;
@@ -1361,7 +1365,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Social / 绀句氦鍔熻兘 ---------------- */
+  /* ---------------- Social / 社交功能 ---------------- */
 
   // Activity category filter. This uses the activities loaded from data.js and
   // filters them in the browser. If the dataset becomes large, this should move
@@ -1384,7 +1388,7 @@ document.addEventListener("click", (event) => {
   // Save/unsave a community activity. Backend mapping:
   // POST /saved-items with { type: "activity", id } or
   // DELETE /saved-items/activity/:id.
-  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴涓ぞ鍖烘椿鍔ㄣ€傚悗绔槧灏勶細
+  // 保存或取消保存社区活动；上方注释为可扩展的后端接口映射。
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
@@ -1397,7 +1401,7 @@ document.addEventListener("click", (event) => {
   // Save/unsave a news item. Backend mapping:
   // POST /saved-items with { type: "news", id } or
   // DELETE /saved-items/news/:id.
-  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴鏉℃柊闂汇€傚悗绔槧灏勶細
+  // 保存或取消保存新闻；上方注释为可扩展的后端接口映射。
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -1413,7 +1417,7 @@ document.addEventListener("click", (event) => {
   // This is one of the clearest "backend interaction" points because a real
   // site would need to save the registration, possibly send organiser details,
   // and respect the profile sharing toggles.
-  // 鍙傚姞鎴栧彇娑堝弬鍔犱竴涓椿鍔ㄣ€傚悗绔槧灏勶細
+  // 切换活动选择状态；上方注释为可扩展的后端报名接口映射。
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
@@ -1423,12 +1427,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Profile / 涓汉璧勬枡鍔熻兘 ---------------- */
+  /* ---------------- Profile / 个人资料功能 ---------------- */
 
   // Toggle profile privacy settings. Backend mapping:
   // PATCH /profile/share-settings with { key, on }.
   // These toggles decide what information may be shared when joining activities.
-  // 鍒囨崲 Profile 闅愮璁剧疆銆傚悗绔槧灏勶細
+  // 切换个人资料的隐私设置；上方注释为可扩展的后端接口映射。
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -1440,7 +1444,7 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
-    // My feature / 鎴戠殑鍔熻兘锛歶pdate the global text-size class from Profile.
+    // My feature / 我的功能：通过个人资料页面更新全局字号样式。
     // After changing the level, renderProfile() refreshes only the Profile
     // controls so the active button reflects the current size.
     textSizeLevel = Number(textSizeTarget.dataset.textSize);
@@ -1449,7 +1453,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Generic actions / 閫氱敤琛ㄥ崟鍔ㄤ綔 ---------------- */
+  /* ---------------- Generic actions / 通用表单操作 ---------------- */
 
   // Form-style actions are routed through handleAction because they often need
   // to read input values, validate them, create/update data objects, and then
@@ -1461,7 +1465,7 @@ document.addEventListener("click", (event) => {
 });
 
 // Preferences are local UI state and are sent with the next API request.
-// 鍋忓ソ灞炰簬褰撳墠椤甸潰鐘舵€侊紝浼氶殢涓嬩竴娆?API 璇锋眰涓€璧峰彂閫併€?
+// 偏好属于当前页面状态，会随下一次 API 请求一起发送。
 document.addEventListener("input", (event) => {
   const letterField = event.target.closest("[data-letter-field]");
   if (!letterField) return;
@@ -1504,7 +1508,7 @@ document.addEventListener("change", (event) => {
   }
 
   // Save one reminder field without rebuilding the page or losing focus.
-  // 淇敼鎻愰啋鏃跺彧鏇存柊瀵瑰簲瀛楁锛屼笉閲嶅缓椤甸潰锛岄伩鍏嶈緭鍏ユ澶卞幓鐒︾偣銆?
+  // 修改提醒时只更新对应字段，不重建页面，避免输入框失去焦点。
   const reminderInput = event.target.closest("[data-ai-reminder]");
   if (!reminderInput) return;
   const settings = window.AgePet?.getReminderSettings?.();
@@ -1548,11 +1552,10 @@ function handleAction(action) {
     }, 2000);
   }
 }
-// Floating companion shortcut: opens the AI Companion page. This is navigation
-// only; the current AI page is static and does not call an external AI/backend.
-// 鍙充笅瑙掓瀹犲揩鎹峰叆鍙ｏ細鐐瑰嚮鍚庢墦寮€ AI Companion 椤甸潰銆?// 杩欓噷鍙仛鍓嶇瀵艰埅锛涘綋鍓?AI 椤甸潰鏄潤鎬侀〉闈紝涓嶄細璋冪敤澶栭儴 AI 鎴栧悗绔€?
+// Floating Pet chat interactions are handled in pet-chat.js.
+// 浮动 Pet 的聊天交互由 pet-chat.js 处理；点击本身不请求 AI。
 // Initial render after data.js has populated window.appData.
-// data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
+// data.js 准备好 window.appData 后，执行第一次页面渲染。
 render();
 loadDatabaseActivities();
 loadNewsFeed();
