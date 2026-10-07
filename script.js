@@ -87,7 +87,7 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  // My feature / 我的功能：应用五档全局字号中的一档。
+  // 应用五档全局字号中的一档。
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
   document.body.classList.add(`text-size-${textSizeLevel}`);
@@ -117,7 +117,7 @@ function notificationCounts() {
 }
 
 function markNotificationsSeen(routeName) {
-  // My feature / 我的功能：更新用户打开页面的已读基准。
+  // 更新用户打开页面的已读基准。
   // This makes notification chips disappear after they are clicked or
   // after the user manually visits the related page.
   // 用户点击通知或进入对应页面后，将当前通知数量记为已读基准。
@@ -1061,7 +1061,7 @@ function renderProfile() {
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
       <!--
-        My feature / 我的功能：五档字号控制，方便阅读。
+        五档字号控制，方便阅读。
         These buttons only change the visual reading size of the prototype;
         they do not change profile data or require any account/login information.
         提供 1 到 5 档阅读字号，只调整页面显示大小，
@@ -1444,7 +1444,7 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
-    // My feature / 我的功能：通过个人资料页面更新全局字号样式。
+    // 通过个人资料页面更新全局字号样式。
     // After changing the level, renderProfile() refreshes only the Profile
     // controls so the active button reflects the current size.
     textSizeLevel = Number(textSizeTarget.dataset.textSize);

@@ -36,6 +36,8 @@ function loadEnvFile() {
 
 loadEnvFile();
 
+// 网站测试密码保护配置。
+// 这组账号密码原本用于让老师/队友访问测试网站。
 // Site-wide password protection for the review/testing build.
 // 用于测试和评分阶段的整站密码保护。
 // Default credentials are intentionally simple because they are shared with
@@ -483,10 +485,12 @@ const LETTER_FONT_STYLES = {
 };
 
 function allowedLetterStyle(map, key, fallback) {
+  // 只允许使用预设信纸样式，避免前端传入任意 CSS。
   return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : map[fallback];
 }
 
 function buildLetterEmailHtml({ body, date, paper, textColor, font }) {
+  // 把 Letter 页面选择的信纸、文字颜色和字体转换成邮件 HTML。
   const paperColor = allowedLetterStyle(LETTER_PAPER_STYLES, paper, "cream");
   const inkColor = allowedLetterStyle(LETTER_TEXT_STYLES, textColor, "ink");
   const fontFamily = allowedLetterStyle(LETTER_FONT_STYLES, font, "serif");
@@ -504,12 +508,14 @@ function buildLetterEmailHtml({ body, date, paper, textColor, font }) {
 }
 
 async function handleSendLetter(req, res) {
+  // Letter 发送邮件接口，前端 Send by email 会调用这里。
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Use POST." });
     return;
   }
 
   if (!hasEmailKey) {
+    // 没有 RESEND_API_KEY 时不能发送真实邮件。
     sendJson(res, 503, { error: "No RESEND_API_KEY set. Add it to .env and restart the server." });
     return;
   }
@@ -529,6 +535,7 @@ async function handleSendLetter(req, res) {
   const body = String(letter.body || text).trim();
   const date = String(letter.date || new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })).trim();
 
+  // 基础校验：邮箱格式、正文是否为空、正文长度。
   if (!isValidEmail(to)) {
     sendJson(res, 400, { error: "Please enter a valid recipient email address." });
     return;
@@ -545,6 +552,7 @@ async function handleSendLetter(req, res) {
   }
 
   try {
+    // 调用 Resend API 发邮件，API Key 只保存在后端，不暴露给浏览器。
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -801,6 +809,7 @@ async function handleNews(req, res) {
 const server = createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host ?? "127.0.0.1"}`);
 
+  // Render 健康检查接口：必须放在密码保护外面，否则 Render 可能无法判断网站已启动。
   // Health check for Render. This must stay outside Basic Auth so Render can
   // confirm the instance is live without needing the review-site password.
   // Render 健康检查入口。这里不能要求 Basic Auth，否则 Render 可能一直停在 loading 页面。
@@ -810,9 +819,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // 整站账号密码保护入口。
   // Require the review password before serving static files or API responses.
   // 静态页面和 API 都先经过密码保护，确保测试网站不是完全公开访问。
   // Temporarily disabled: site-wide username/password protection.
+  // 目前为了展示方便暂时关闭；需要恢复时取消下一行注释。
   // if (!checkBasicAuth(req, res)) return;
 
   try {
