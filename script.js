@@ -17,15 +17,40 @@ const appData = window.appData || {};
 let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
 const state = JSON.parse(JSON.stringify(appData.state || {}));
+
+// Profile is saved to this device's localStorage (not a server account), so
+// it survives a refresh but stays private to this browser.
+const PROFILE_STORAGE_KEY = "agetogether:profile";
+let profileSaveError = "";
+
+function loadSavedProfile() {
+  try {
+    const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (parsed && typeof parsed === "object") {
+      state.profile = { ...state.profile, ...parsed };
+    }
+  } catch (error) {
+    console.warn("[profile] couldn't read saved profile from localStorage:", error?.message ?? error);
+  }
+}
+
+function saveProfileLocally() {
+  try {
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(state.profile));
+    profileSaveError = "";
+    return true;
+  } catch (error) {
+    console.warn("[profile] couldn't save profile to localStorage:", error?.message ?? error);
+    profileSaveError = "Couldn't save to this device (storage may be full or disabled). Your changes are kept for this session only.";
+    return false;
+  }
+}
+
+loadSavedProfile();
+
 const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
-let activitySelections = window.ActivityCheck.readSelections(localStorage);
-state.activities = window.ActivityCheck.restoreSelections(state.activities, activitySelections);
-let activityPreferences = loadActivityPreferences();
-let activityStorageMessage = '';
-let letterRewrite = { body: '', original: '', status: '', request: 0 };
-let paperAudioContext = null;
-let letterSoundEnabled = true;
-try { letterSoundEnabled = localStorage.getItem('agetogether.letter-sound') !== 'off'; } catch { /* Default to a quiet sound. */ }
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
@@ -87,21 +112,18 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  // 应用五档全局字号中的一档。
+  // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
   // The actual font sizes are defined in styles.css on body.text-size-1
   // through body.text-size-5. Replacing the class keeps the change simple and global.
+  // 鎶?1 鍒?5 妗ｅ瓧浣撹缃浆鎹㈡垚 body 涓婄殑 CSS class銆傚叿浣撳瓧鍙峰啓鍦?  // styles.css 閲岋紝杩欐牱椤甸潰澶ч儴鍒嗘枃瀛楅兘浼氳窡鐫€ body 鐨勫瓧鍙蜂竴璧峰彉鍖栥€?  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
-function activityIcon(category, title = "") {
+function activityIcon(category) {
   // Use numeric HTML entities for controlled activity icons.
   // This avoids broken emoji encoding in the Social cards.
-  const value = `${category || ""} ${title || ""}`.toLowerCase();
+  const value = `${category || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
-  if (value.includes("theatre") || value.includes("theater") || value.includes("athenaeum")) return "&#x1F3AD;";
-  if (value.includes("museum") || value.includes("gallery") || value.includes("history")) return "&#x1F3DB;";
-  if (value.includes("visitor") || value.includes("information") || value.includes("booth")) return "&#x2139;";
-  if (value.includes("community") || value.includes("assembly") || value.includes("centre") || value.includes("center")) return "&#x1F91D;";
   if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
   if (value.includes("health") || value.includes("medical")) return "&#x267F;";
   if (value.includes("sport") || value.includes("recreation")) return "&#x1F6B6;";
@@ -117,10 +139,10 @@ function notificationCounts() {
 }
 
 function markNotificationsSeen(routeName) {
-  // 更新用户打开页面的已读基准。
+  // My feature / 鎴戠殑鍔熻兘锛歶pdate the read baseline for the section the user opened.
   // This makes notification chips disappear after they are clicked or
   // after the user manually visits the related page.
-  // 用户点击通知或进入对应页面后，将当前通知数量记为已读基准。
+  // 鐢ㄦ埛鐐瑰嚮閫氱煡鎴栦富鍔ㄨ繘鍏ュ搴旈〉闈㈠悗锛岃繖閲屼細鎶婂綋鍓嶆暟閲忚涓哄凡璇诲熀鍑嗭紝
   const counts = notificationCounts();
   if (routeName === "social") notificationSeen.social = counts.social;
 }
@@ -145,15 +167,13 @@ function homeNotifications() {
 function mapDiscoveryPlace(place) {
   const category = place.sub_theme || place.theme || "Community place";
   // Use an ASCII separator so place distances render consistently.
-  const distance = place.distance_km != null ? ` - ${place.distance_km} km away` : "";
+  const distance = place.distance_km ? ` - ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
     category,
-    icon: activityIcon(category, place.feature_name),
+    icon: activityIcon(category),
     title: place.feature_name,
     location: `${place.theme}${distance}`,
-    distanceKm: place.distance_km,
-    distanceOrigin: locationStatus === "granted" ? "your selected location" : "Melbourne CBD demonstration location",
     date: "Community place",
     price: "Details not confirmed",
     copy: place.relevance_reason || "A nearby place from the City of Melbourne discovery dataset.",
@@ -183,11 +203,11 @@ async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
     if (!places.length) throw new Error("Database API returned no places");
-    state.activities = window.ActivityCheck.restoreSelections(places.map(mapDiscoveryPlace), activitySelections);
+    state.activities = places.map(mapDiscoveryPlace);
     activitiesSource = "database";
   } catch (error) {
     console.warn("[activities] using static fallback:", error?.message ?? error);
-    state.activities = window.ActivityCheck.restoreSelections(staticActivities, activitySelections);
+    state.activities = staticActivities;
     activitiesSource = "static";
     activitiesError = "Database places are unavailable, so static sample activities are shown.";
   } finally {
@@ -320,7 +340,7 @@ async function useMyLocation() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Home / 首页                                                          */
+/* Home / 棣栭〉                                                          */
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
@@ -467,13 +487,10 @@ function renderLetter() {
             <textarea id="letter-body" class="letter-body-input" data-letter-field="body" placeholder="Write your letter here...">${escapeHtml(letterDraft.body)}</textarea>
           </div>
 
-          ${letterWritingTools()}
           <div class="wide-actions letter-actions">
             <button class="primary" data-action="download-letter">Download letter</button>
             <button class="blue-btn" data-action="send-letter">Send by email</button>
           </div>
-          <label class="letter-sound-toggle"><input type="checkbox" data-letter-sound ${letterSoundEnabled ? 'checked' : ''} /> Play a gentle paper sound when sent</label>
-          <p id="letter-send-status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel letter-preview-panel">
@@ -586,49 +603,6 @@ function downloadLetter() {
   URL.revokeObjectURL(url);
 }
 
-function preparePaperSound() {
-  if (!letterSoundEnabled) return;
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    paperAudioContext ||= new AudioContext();
-    if (paperAudioContext.state === 'suspended') paperAudioContext.resume().catch(() => {});
-  } catch { /* Sound is optional. */ }
-}
-
-// Filtered noise with a brief swishing envelope mimics turning a paper page.
-// 使用滤波噪声和短促起伏模拟翻纸，无需下载音频文件。
-function playPaperSound() {
-  if (!letterSoundEnabled || !paperAudioContext || paperAudioContext.state !== 'running') return;
-  try {
-    const context = paperAudioContext;
-    const duration = 0.65;
-    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
-    const samples = buffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    const filter = context.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1800, context.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(650, context.currentTime + duration);
-    filter.Q.value = 0.55;
-    const gain = context.createGain();
-    const start = context.currentTime;
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(0.12, start + 0.08);
-    gain.gain.linearRampToValueAtTime(0.035, start + 0.24);
-    gain.gain.linearRampToValueAtTime(0.09, start + 0.36);
-    gain.gain.linearRampToValueAtTime(0, start + duration);
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(context.destination);
-    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
-    source.start(start);
-    source.stop(start + duration);
-  } catch { /* Never turn a successful send into an error because of audio. */ }
-}
-
 async function sendLetter() {
   const email = letterDraft.recipientEmail.trim();
   if (!email) {
@@ -644,9 +618,6 @@ async function sendLetter() {
   const subject = letterDraft.subject.trim() || "A note from AgeTogether";
   const sender = state.profile?.preferredName || state.profile?.fullName || "Me";
   const date = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
-  preparePaperSound();
-  const sendStatus = document.querySelector('#letter-send-status');
-  if (sendStatus) sendStatus.textContent = 'Sending your letter...';
 
   try {
     const response = await fetch("/api/send-letter", {
@@ -671,141 +642,14 @@ async function sendLetter() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result?.error || "Email could not be sent.");
 
-    playPaperSound();
-    if (sendStatus?.isConnected) sendStatus.textContent = 'Letter sent.';
+    alert("Letter sent.");
   } catch (error) {
-    if (sendStatus?.isConnected) sendStatus.textContent = 'Your letter could not be sent.';
     alert(error?.message || "Email could not be sent.");
   }
 }
 
-/* Social / 社交与社区活动                                               */
+/* Social / 绀句氦涓庣ぞ鍖烘椿鍔?                                             */
 /* ------------------------------------------------------------------ */
-
-// 仅在本机记录活动；刷新或数据库重载后按稳定 ID 恢复。
-function rememberActivity(activity) {
-  activitySelections = window.ActivityCheck.recordSelection(activitySelections, activity);
-  try {
-    localStorage.setItem(window.ActivityCheck.SELECTION_KEY, JSON.stringify(activitySelections));
-    activityStorageMessage = '';
-  } catch { activityStorageMessage = 'Your selection works now, but this device could not save it for next time.'; }
-}
-
-function loadActivityPreferences() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('agetogether.activity-preferences.v1') || 'null');
-    if (stored && Array.isArray(stored.needs) && Array.isArray(stored.interests)) return {
-      needs: stored.needs.filter((need) => Object.hasOwn(window.ActivityCheck.needLabels, need)),
-      interests: stored.interests.filter((interest) => typeof interest === 'string'),
-      maxDistance: [2, 5, 10, 20].includes(stored.maxDistance) ? stored.maxDistance : 5,
-    };
-  } catch { /* Corrupt storage uses profile-derived defaults. */ }
-  const profile = String(state.profile?.accessibility || '');
-  const needs = [];
-  if (/seat|chair/i.test(profile)) needs.push('seating');
-  if (/wheelchair/i.test(profile)) needs.push('wheelchair');
-  if (/step|stairs/i.test(profile)) needs.push('stepFree');
-  if (/hearing/i.test(profile)) needs.push('hearing');
-  if (profile.trim() && !needs.length) needs.push('other');
-  return { needs, maxDistance: 5, interests: [] };
-}
-
-function activityPreferenceMarkup() {
-  const categories = activityFilters().filter((category) => category !== 'All');
-  return `<details class="panel activity-preferences">
-    <summary>Personalise your activity checks</summary>
-    <p class="muted small">Access needs come first, then distance, then interests. Choose what matters to you.</p>
-    <fieldset><legend>Access needs</legend><div class="check-options">
-      ${Object.entries(window.ActivityCheck.needLabels).map(([key, label]) => `<label><input type="checkbox" data-activity-setting="needs" value="${key}" ${activityPreferences.needs.includes(key) ? 'checked' : ''} /> ${label}</label>`).join('')}
-    </div></fieldset>
-    <label>Preferred distance <select data-activity-setting="maxDistance">${[2, 5, 10, 20].map((km) => `<option value="${km}" ${activityPreferences.maxDistance === km ? 'selected' : ''}>Up to ${km} km</option>`).join('')}</select></label>
-    <fieldset><legend>Interests (optional)</legend><div class="check-options">
-      ${categories.map((category) => `<label><input type="checkbox" data-activity-setting="interests" value="${escapeHtml(category)}" ${activityPreferences.interests.includes(category) ? 'checked' : ''} /> ${escapeHtml(category)}</label>`).join('')}
-    </div></fieldset>
-  </details>`;
-}
-
-function activityCheckMarkup(activity) {
-  const check = window.ActivityCheck.analyse(activity, activityPreferences);
-  return `<section class="activity-check check-${check.level}">
-    <h4>Your activity check: ${escapeHtml(check.label)}</h4>
-    <p class="muted small">${activity.saved ? 'Saved' : ''}${activity.saved && activity.joined ? ' · ' : ''}${activity.joined ? 'Interested / selected' : ''}${activity.fromHistory ? ' · From your earlier selections' : ''}</p>
-    <ul>${check.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
-    <p>${escapeHtml(check.next)}</p>
-    <button class="outline-btn" data-activity-followup="${escapeHtml(activity.id)}">Ask Companion about this activity</button>
-    <p class="muted small">This sends the activity description, not your personal access needs, to our AI provider.</p>
-    <p class="activity-answer" role="status" aria-live="polite"></p>
-  </section>`;
-}
-
-// 在活动卡片内显示问答；页面重建后忽略旧请求。
-async function askAboutActivity(button) {
-  const activity = state.activities.find((item) => String(item.id) === button.dataset.activityFollowup);
-  const answer = button.closest('[data-activity-card]')?.querySelector('.activity-answer');
-  if (!activity || !answer || button.disabled) return;
-  button.disabled = true;
-  answer.textContent = 'Your companion is thinking...';
-  try {
-    const response = await fetch('/api/ask', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: 'activity-explain', ...aiPreferences, input: JSON.stringify({ title: activity.title, category: activity.category, description: activity.copy, access: activity.access, distanceKm: window.ActivityCheck.distanceOf(activity), source: activity.source || 'sample', question: 'Explain what I could do here and what to ask the venue before visiting.' }) }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Your companion could not answer right now.');
-    if (!answer.isConnected) return;
-    answer.textContent = payload.text || 'There is no answer available right now.';
-    window.AgePet?.speak(payload.text, { kind: 'ai' });
-  } catch (error) { if (answer.isConnected) answer.textContent = error.message || 'Please try again later.'; }
-  finally { if (button.isConnected) button.disabled = false; }
-}
-
-function letterWritingToolsContent() {
-  return `<h3>Let Companion help with your words</h3>
-    <p class="muted small">Keep your meaning and change the tone. You review the result before using it.</p>
-    <label>Writing language <select data-ai-preference="language">
-      <option value="en-AU" ${aiPreferences.language === 'en-AU' ? 'selected' : ''}>Australian English</option>
-      <option value="SC" ${aiPreferences.language === 'SC' ? 'selected' : ''}>简体中文</option>
-      <option value="TC" ${aiPreferences.language === 'TC' ? 'selected' : ''}>繁體中文</option>
-    </select></label>
-    <div class="check-options">${[['gentle', 'Softer & warmer'], ['simple', 'Simpler'], ['formal', 'More formal']].map(([tone, label]) => `<button class="outline-btn" data-rewrite-tone="${tone}">${label}</button>`).join('')}</div>
-    <p class="muted small">Only your message text is sent to DeepSeek for rewriting. Please leave out private details.</p>
-    <p role="status" aria-live="polite">${escapeHtml(letterRewrite.status)}</p>
-    ${letterRewrite.body ? `<div class="rewrite-preview"><h4>Suggested wording</h4><p class="rewritten-body">${escapeHtml(letterRewrite.body)}</p><button class="primary" data-use-rewrite>Use this wording</button> <button class="outline-btn" data-dismiss-rewrite>Keep original</button></div>` : ''}`;
-}
-
-function letterWritingTools() {
-  return `<section id="letter-writing-tools" class="writing-tools">${letterWritingToolsContent()}</section>`;
-}
-
-// User approves sharing the message before each rewrite. Original stays intact until accepted.
-// 每次改写前确认发送正文；用户采纳前保留原文，防止旧请求覆盖新编辑。
-async function rewriteLetter(tone) {
-  if (!['gentle', 'simple', 'formal'].includes(tone)) return;
-  const original = letterDraft.body;
-  const target = document.querySelector('#letter-writing-tools');
-  if (!target) return;
-  if (original.trim() && !window.confirm('Send this letter message to DeepSeek to change its wording? Recipient name and email will not be sent. Avoid including private details in the message.')) return;
-  const request = letterRewrite.request + 1;
-  letterRewrite = { body: '', original, request, status: original.trim() ? 'Preparing suggested wording...' : 'Write your message first.' };
-  target.innerHTML = letterWritingToolsContent();
-  if (!original.trim()) return;
-  try {
-    const response = await fetch('/api/ask', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: `rewrite-${tone}`, input: original, language: aiPreferences.language, style: 'standard' }),
-    });
-    const payload = await response.json();
-    if (request !== letterRewrite.request || original !== letterDraft.body) return;
-    if (!response.ok || payload.refused || !payload.text) throw new Error(payload.error || 'Companion could not rewrite this message. Your original is unchanged.');
-    letterRewrite.body = payload.text;
-    letterRewrite.status = 'Read the suggestion and choose whether to use it.';
-  } catch (error) {
-    if (request !== letterRewrite.request) return;
-    letterRewrite.status = error.message || 'Please try again later.';
-  }
-  const current = document.querySelector('#letter-writing-tools');
-  if (current) current.innerHTML = letterWritingToolsContent();
-}
 
 function locationCard() {
   const isDefault = locationStatus === "default" || locationStatus === "denied" || locationStatus === "error";
@@ -839,16 +683,14 @@ function renderSocial() {
       <div class="tabs">
         <button class="tab ${socialTab === "activities" ? "active" : ""}" data-social-tab="activities">&#x1F5FA; Nearby Activities</button>
         <button class="tab ${socialTab === "news" ? "active" : ""}" data-social-tab="news">&#x1F4F0; Current News</button>
-        <button class="tab ${socialTab === "saved" ? "active" : ""}" data-social-tab="saved">&#x1F516; Your selections</button>
+        <button class="tab ${socialTab === "saved" ? "active" : ""}" data-social-tab="saved">&#x1F516; Saved</button>
       </div>
-      ${socialTab !== 'news' ? activityPreferenceMarkup() : ''}
-      ${activityStorageMessage ? `<p role="status">${escapeHtml(activityStorageMessage)}</p>` : ''}
       ${content}
     </section>
   `;
 
   if (socialTab === "activities" && activityView === "map") {
-    const filtered = state.activities.filter((a) => !a.fromHistory && (state.activityFilter === "All" || a.category === state.activityFilter));
+    const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
     initActivityMap(filtered);
   } else if (activityMap) {
     activityMap.remove();
@@ -864,7 +706,7 @@ function renderActivities() {
   // Activity cards are generated from `state.activities`.
   // The filter is a simple category match, which demonstrates a transparent
   // data-driven discovery baseline suitable for Iteration 1.
-  const filtered = state.activities.filter((a) => !a.fromHistory && (state.activityFilter === "All" || a.category === state.activityFilter));
+  const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
     <p class="muted section-copy">
@@ -909,17 +751,17 @@ function activity(a) {
   // Reusable card for one activity/place suggestion.
   // The same component is used in both the Activities tab and Saved tab.
   return `
-    <article class="activity-card" data-activity-card="${escapeHtml(a.id)}">
+    <article class="activity-card">
       <div class="card-top">
-        <span class="activity-icon">${/^&#x[0-9a-f]+;$/i.test(a.icon || '') ? a.icon : escapeHtml(a.icon)}</span>
+        <span class="activity-icon">${a.icon}</span>
         <h3>${escapeHtml(a.title)}</h3>
-        <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${escapeHtml(a.id)}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
+        <button class="save-btn ${a.saved ? "saved" : ""}" data-save-activity="${a.id}">&#x1F516; ${a.saved ? "Saved" : "Save"}</button>
       </div>
       <p class="muted">&#x1F4CD; ${escapeHtml(a.location)}</p>
       <p><span class="small-badge blue-badge">&#x1F5D3; ${escapeHtml(a.date)}</span> <span class="small-badge">${escapeHtml(a.price)}</span></p>
       <p>${escapeHtml(a.copy)}</p>
       <p class="muted small">&#x267F; ${escapeHtml(a.access)}<br />&#x1F3E2; ${escapeHtml(a.organiser)}</p>
-      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${escapeHtml(a.id)}">${
+      <button class="${a.joined ? "outline-btn" : "primary"} wide" data-join-activity="${a.id}">${
         a.source === "database"
           ? a.joined
             ? "&#x2713; Interested - tap to remove"
@@ -928,7 +770,6 @@ function activity(a) {
             ? "&#x2713; Joined - tap to leave"
             : "Join Activity"
       }</button>
-      ${a.saved || a.joined ? activityCheckMarkup(a) : ''}
     </article>
   `;
 }
@@ -972,7 +813,7 @@ function initActivityMap(activities) {
     activityMap.fitBounds(bounds.pad(0.25));
   } else {
     // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
-    activityMap.setView([-37.8136, 144.9631], 12);
+    // 濡傛灉绛涢€夊悗鐨勬椿鍔ㄩ兘娌℃湁鍧愭爣锛屽氨鍥為€€鍒板ⅷ灏旀湰 CBD 鐨勯粯璁ゅ湴鍥捐鍥俱€?    activityMap.setView([-37.8136, 144.9631], 12);
   }
 }
 
@@ -1022,7 +863,7 @@ function news(n) {
 function renderSaved() {
   // Saved view is derived from the data, not stored as a separate list.
   // It collects activities/news where `saved === true`.
-  const savedActivities = state.activities.filter((a) => a.saved || a.joined);
+  const savedActivities = state.activities.filter((a) => a.saved);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
   if (!savedActivities.length && !savedNews.length) {
@@ -1030,7 +871,7 @@ function renderSaved() {
       <section class="panel empty">
         <div>
           <div class="empty-icon">&#x1F516;</div>
-          <h2>No selections yet</h2>
+          <h2>Nothing saved yet</h2>
           <p class="muted">Browse Nearby Activities or Current News and tap the Save button on any item to keep it here.</p>
           <button class="primary" data-social-tab="activities">Browse Activities</button>
           <button class="blue-btn" data-social-tab="news">Browse News</button>
@@ -1040,8 +881,8 @@ function renderSaved() {
   }
 
   return `
-    <h2>Your selected activities and saved news</h2>
-    <p class="muted section-copy">Saved and interested activities are kept on this device. Each activity has its own check.</p>
+    <h2>Your Saved Items</h2>
+    <p class="muted section-copy">Activities and news you have saved to read or revisit later.</p>
     <section class="social-grid">
       ${savedActivities.map((a) => activity(a)).join("")}
       ${savedNews.map((n) => news(n)).join("")}
@@ -1050,7 +891,7 @@ function renderSaved() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Profile / 个人资料                                                    */
+/* Profile / 涓汉璧勬枡                                                   */
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
@@ -1061,12 +902,11 @@ function renderProfile() {
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
       <!--
-        五档字号控制，方便阅读。
+        My feature / 鎴戠殑鍔熻兘锛歠ive-level text-size control for accessibility.
         These buttons only change the visual reading size of the prototype;
         they do not change profile data or require any account/login information.
-        提供 1 到 5 档阅读字号，只调整页面显示大小，
-        不修改个人资料，也不需要账户或登录信息。
-      -->
+        杩欓噷鎻愪緵 1 鍒?5 妗ｉ槄璇诲瓧鍙疯皟鑺傦紝鍙奖鍝嶉〉闈㈡樉绀哄ぇ灏忥紝
+        涓嶄慨鏀逛釜浜鸿祫鏂欙紝涔熶笉闇€瑕佺櫥褰曡处鍙枫€?      -->
       <section class="panel profile-panel">
         <h2>Text size</h2>
         <div class="text-size-picker" aria-label="Text size">
@@ -1092,8 +932,10 @@ function renderProfile() {
         </div>
         <p>
           <button class="primary" data-action="save-profile">Save Changes</button>
-          ${state.profileJustSaved ? `<span class="small-badge" style="margin-left:12px;">&#x2713; Saved</span>` : ""}
+          ${state.profileJustSaved ? `<span class="small-badge" style="margin-left:12px;">&#x2713; Saved to this device</span>` : ""}
         </p>
+        ${profileSaveError ? `<p class="info-note warning-note">${escapeHtml(profileSaveError)}</p>` : ""}
+        <p class="muted small">Saved on this device only - not sent to a server or shared with anyone else.</p>
       </section>
       <section class="panel profile-panel">
         <h2>What information can be shared?</h2>
@@ -1124,7 +966,7 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI page and Companion integration / AI 页面与伙伴集成                  */
+/* AI page and Companion integration / AI 椤甸潰鍜屾瀹犻泦鎴?               */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
@@ -1158,7 +1000,9 @@ function renderAI() {
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
         <section class="panel">
-          <div id="companion-history"></div>
+          <h2>Ask your companion</h2>
+          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
+          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
           <p class="muted quick-label"><strong>Or tap a question to ask:</strong></p>
           <div class="quick-questions">
             <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
@@ -1174,9 +1018,7 @@ function renderAI() {
           Companion setup mount point.
           pet.js fills this empty container with the photo picker, status card,
           and companion history after the AI page has been rendered.
-          Companion 设置区域的挂载点。
-          AI 页面渲染后，pet.js 在这里放入照片选择器、状态卡片和照片历史。
-        -->
+          Companion 璁剧疆鍖哄煙鐨勬寕杞界偣銆?          AI 椤甸潰娓叉煋瀹屾垚鍚庯紝pet.js 浼氭妸鐓х墖閫夋嫨鍣ㄣ€佺姸鎬佸崱鐗囧拰鍘嗗彶璁板綍濉埌杩欓噷銆?        -->
         <section class="panel" id="pet-setup"></section>
         <section class="ai-preferences panel">
           <h2>How would you like me to speak?</h2>
@@ -1185,8 +1027,8 @@ function renderAI() {
               <label for="ai-language">Language</label>
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
-                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>简体中文</option>
-                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>繁體中文</option>
+                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>绠€浣撲腑鏂?/option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
               </select>
             </div>
             <div class="field">
@@ -1200,7 +1042,7 @@ function renderAI() {
           </div>
         </section>
         <section class="ai-reminders panel">
-          <h2>Daily reminders</h2>
+          <h2>Gentle daily reminders</h2>
           <p class="muted small">These reminders run while this page is open. You can change the times anytime.</p>
           <div class="reminder-list">
             ${reminderRow("water", "Water", "Have a little drink.")}
@@ -1214,14 +1056,12 @@ function renderAI() {
   `;
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
-  window.AgePet?.mountSetup();
-  window.PetChat?.mountHistory(document.querySelector('#companion-history'));
+  // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
 }
 
 // Send one named task to the server and render the response as plain text.
-// 将指定任务发送到服务端，并以纯文本安全显示返回结果。
+// 灏嗕竴涓懡鍚嶄换鍔″彂閫佸埌鏈嶅姟绔紝骞朵互绾枃鏈畨鍏ㄦ樉绀鸿繑鍥炵粨鏋溿€?
 async function askCompanion(task, input) {
-  if (window.PetChat?.sendQuestion) return window.PetChat.sendQuestion(input, task);
   const answer = document.querySelector("#ai-answer");
   if (!answer || !input.trim()) return;
 
@@ -1242,7 +1082,7 @@ async function askCompanion(task, input) {
     answer.className = "ai-answer";
     answer.textContent = payload.text || "Your companion did not have an answer for that one.";
     // Keep the full answer in the panel, but show a short, safe version above Pet.
-    // 后备路径：完整答案留在面板，简短纯文本回复显示在 Pet 上方。
+    // 瀹屾暣绛旀鐣欏湪闈㈡澘涓紝鍚屾椂鎶婄畝鐭函鏂囨湰鍥炲鏄剧ず鍦?Pet 澶撮《銆?
     window.AgePet?.speak(payload.text, { kind: "ai" });
   } catch (error) {
     if (requestNumber !== aiRequestNumber) return;
@@ -1252,7 +1092,7 @@ async function askCompanion(task, input) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Router / render / 路由与渲染                                          */
+/* Router / render / 璺敱涓庢覆鏌?                                         */
 /* ------------------------------------------------------------------ */
 
 function render() {
@@ -1263,7 +1103,6 @@ function render() {
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
-  if (!pagesWithPet.has(route)) window.PetChat?.close();
 
   if (route === "home") renderHome();
   if (route === "letter") renderLetter();
@@ -1273,32 +1112,14 @@ function render() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Event handling / 事件处理                                             */
+/* Event handling / 浜嬩欢澶勭悊                                             */
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
-  const rewriteButton = event.target.closest('[data-rewrite-tone]');
-  if (rewriteButton) { rewriteLetter(rewriteButton.dataset.rewriteTone); return; }
-  if (event.target.closest('[data-use-rewrite]')) {
-    if (letterRewrite.body && letterDraft.body === letterRewrite.original) {
-      letterDraft.body = letterRewrite.body;
-      letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-      renderLetter();
-    }
-    return;
-  }
-  if (event.target.closest('[data-dismiss-rewrite]')) {
-    letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-    renderLetter();
-    return;
-  }
-  const followUp = event.target.closest('[data-activity-followup]');
-  if (followUp) { askAboutActivity(followUp); return; }
   // Event delegation keeps the interaction code in one place. Instead of
   // attaching separate click listeners after every render, the document listens
   // once and checks which data-* attribute was clicked.
-  // 事件委托集中处理交互，无需每次渲染后重新绑定按钮监听。
-  // document 根据被点击元素的 data-* 属性判断操作。
+  // 浜嬩欢濮旀墭鎶婁氦浜掗€昏緫闆嗕腑鍦ㄤ竴涓湴鏂广€?  // 姣忔 render 鍚庝笉鐢ㄩ噸鏂扮粰鎸夐挳缁戝畾鐩戝惉鍣紝鍙渶瑕佺敱 document 缁熶竴鍒ゆ柇鐐瑰嚮浜嗗摢涓?data-* 鍏冪礌銆?
   // Navigation: any element with data-route changes the active screen. The
   // render functions recreate the visible page from the current state object.
   const routeTarget = event.target.closest("[data-route]");
@@ -1319,10 +1140,10 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- AI Companion / AI 助手 ---------------- */
+  /* ---------------- AI Companion / AI 鍔╂墜 ---------------- */
 
   // Quick questions use the same server task as free-form questions.
-  // 快捷问题和自由输入共用服务端的 ask 任务。
+  // 蹇嵎闂鍜岃嚜鐢辫緭鍏ュ叡鐢ㄥ悓涓€涓湇鍔＄ ask 浠诲姟銆?
   const aiQuestion = event.target.closest("[data-ai-question]");
   if (aiQuestion) {
     askCompanion("ask", aiQuestion.dataset.aiQuestion);
@@ -1330,7 +1151,7 @@ document.addEventListener("click", (event) => {
   }
 
   // Action buttons provide carefully worded prompts for common use cases.
-  // 操作按钮使用预设提示，减少用户组织问题的负担。
+  // 鎿嶄綔鎸夐挳浣跨敤棰勫厛鍐欏ソ鐨勬彁绀猴紝闄嶄綆鐢ㄦ埛缁勭粐闂鐨勮礋鎷呫€?
   const aiAction = event.target.closest("[data-ai-action]");
   if (aiAction) {
     const action = aiAction.dataset.aiAction;
@@ -1365,7 +1186,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Social / 社交功能 ---------------- */
+  /* ---------------- Social / 绀句氦鍔熻兘 ---------------- */
 
   // Activity category filter. This uses the activities loaded from data.js and
   // filters them in the browser. If the dataset becomes large, this should move
@@ -1388,12 +1209,12 @@ document.addEventListener("click", (event) => {
   // Save/unsave a community activity. Backend mapping:
   // POST /saved-items with { type: "activity", id } or
   // DELETE /saved-items/activity/:id.
-  // 保存或取消保存社区活动；上方注释为可扩展的后端接口映射。
+  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴涓ぞ鍖烘椿鍔ㄣ€傚悗绔槧灏勶細
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) { activityItem.saved = !activityItem.saved; rememberActivity(activityItem); }
+    if (activityItem) activityItem.saved = !activityItem.saved;
     renderSocial();
     return;
   }
@@ -1401,7 +1222,7 @@ document.addEventListener("click", (event) => {
   // Save/unsave a news item. Backend mapping:
   // POST /saved-items with { type: "news", id } or
   // DELETE /saved-items/news/:id.
-  // 保存或取消保存新闻；上方注释为可扩展的后端接口映射。
+  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴鏉℃柊闂汇€傚悗绔槧灏勶細
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -1417,22 +1238,22 @@ document.addEventListener("click", (event) => {
   // This is one of the clearest "backend interaction" points because a real
   // site would need to save the registration, possibly send organiser details,
   // and respect the profile sharing toggles.
-  // 切换活动选择状态；上方注释为可扩展的后端报名接口映射。
+  // 鍙傚姞鎴栧彇娑堝弬鍔犱竴涓椿鍔ㄣ€傚悗绔槧灏勶細
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) { activityItem.joined = !activityItem.joined; rememberActivity(activityItem); }
+    if (activityItem) activityItem.joined = !activityItem.joined;
     renderSocial();
     return;
   }
 
-  /* ---------------- Profile / 个人资料功能 ---------------- */
+  /* ---------------- Profile / 涓汉璧勬枡鍔熻兘 ---------------- */
 
   // Toggle profile privacy settings. Backend mapping:
   // PATCH /profile/share-settings with { key, on }.
   // These toggles decide what information may be shared when joining activities.
-  // 切换个人资料的隐私设置；上方注释为可扩展的后端接口映射。
+  // 鍒囨崲 Profile 闅愮璁剧疆銆傚悗绔槧灏勶細
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -1444,16 +1265,16 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
-    // 通过个人资料页面更新全局字号样式。
+    // My feature / 鎴戠殑鍔熻兘锛歶pdate the global text-size class from Profile.
     // After changing the level, renderProfile() refreshes only the Profile
     // controls so the active button reflects the current size.
-    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    // 鐢ㄦ埛鐐瑰嚮 Profile 閲岀殑瀛楀彿鎸夐挳鍚庯紝鍏堟洿鏂板叏灞€妗ｄ綅鍜?body class锛?    // 鍐嶅埛鏂?Profile 鎺т欢锛岃褰撳墠閫変腑鐨勬寜閽姸鎬佹纭樉绀恒€?    textSizeLevel = Number(textSizeTarget.dataset.textSize);
     applyTextSize();
     renderProfile();
     return;
   }
 
-  /* ---------------- Generic actions / 通用表单操作 ---------------- */
+  /* ---------------- Generic actions / 閫氱敤琛ㄥ崟鍔ㄤ綔 ---------------- */
 
   // Form-style actions are routed through handleAction because they often need
   // to read input values, validate them, create/update data objects, and then
@@ -1465,50 +1286,23 @@ document.addEventListener("click", (event) => {
 });
 
 // Preferences are local UI state and are sent with the next API request.
-// 偏好属于当前页面状态，会随下一次 API 请求一起发送。
+// 鍋忓ソ灞炰簬褰撳墠椤甸潰鐘舵€侊紝浼氶殢涓嬩竴娆?API 璇锋眰涓€璧峰彂閫併€?
 document.addEventListener("input", (event) => {
   const letterField = event.target.closest("[data-letter-field]");
   if (!letterField) return;
   letterDraft[letterField.dataset.letterField] = letterField.value;
-  if (letterField.dataset.letterField === 'body') {
-    letterRewrite = { body: '', original: '', status: '', request: letterRewrite.request + 1 };
-    const tools = document.querySelector('#letter-writing-tools');
-    if (tools) tools.innerHTML = letterWritingToolsContent();
-  }
   updateLetterPreview();
 });
 
 document.addEventListener("change", (event) => {
-  const soundToggle = event.target.closest('[data-letter-sound]');
-  if (soundToggle) {
-    letterSoundEnabled = soundToggle.checked;
-    try { localStorage.setItem('agetogether.letter-sound', letterSoundEnabled ? 'on' : 'off'); } catch { /* Applies for this session. */ }
-    return;
-  }
-  const activitySetting = event.target.closest('[data-activity-setting]');
-  if (activitySetting) {
-    const field = activitySetting.dataset.activitySetting;
-    if (field === 'maxDistance') activityPreferences.maxDistance = Number(activitySetting.value);
-    else {
-      const values = new Set(activityPreferences[field]);
-      if (activitySetting.checked) values.add(activitySetting.value);
-      else values.delete(activitySetting.value);
-      activityPreferences[field] = [...values];
-    }
-    try { localStorage.setItem('agetogether.activity-preferences.v1', JSON.stringify(activityPreferences)); }
-    catch { activityStorageMessage = 'Your preferences apply now, but could not be saved on this device.'; }
-    renderSocial();
-    return;
-  }
   const preference = event.target.closest("[data-ai-preference]");
   if (preference) {
     aiPreferences[preference.dataset.aiPreference] = preference.value;
-    window.PetChat?.refreshLanguage();
     return;
   }
 
   // Save one reminder field without rebuilding the page or losing focus.
-  // 修改提醒时只更新对应字段，不重建页面，避免输入框失去焦点。
+  // 淇敼鎻愰啋鏃跺彧鏇存柊瀵瑰簲瀛楁锛屼笉閲嶅缓椤甸潰锛岄伩鍏嶈緭鍏ユ澶卞幓鐒︾偣銆?
   const reminderInput = event.target.closest("[data-ai-reminder]");
   if (!reminderInput) return;
   const settings = window.AgePet?.getReminderSettings?.();
@@ -1544,6 +1338,7 @@ function handleAction(action) {
     state.profile.suburb = document.querySelector("#profile-suburb")?.value ?? state.profile.suburb;
     state.profile.emergencyContact = document.querySelector("#profile-emergency")?.value ?? state.profile.emergencyContact;
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
+    saveProfileLocally();
     state.profileJustSaved = true;
     renderProfile();
     setTimeout(() => {
@@ -1552,10 +1347,10 @@ function handleAction(action) {
     }, 2000);
   }
 }
-// Floating Pet chat interactions are handled in pet-chat.js.
-// 浮动 Pet 的聊天交互由 pet-chat.js 处理；点击本身不请求 AI。
+// Floating companion shortcut: opens the AI Companion page. This is navigation
+// only; the current AI page is static and does not call an external AI/backend.
+// 鍙充笅瑙掓瀹犲揩鎹峰叆鍙ｏ細鐐瑰嚮鍚庢墦寮€ AI Companion 椤甸潰銆?// 杩欓噷鍙仛鍓嶇瀵艰埅锛涘綋鍓?AI 椤甸潰鏄潤鎬侀〉闈紝涓嶄細璋冪敤澶栭儴 AI 鎴栧悗绔€?
 // Initial render after data.js has populated window.appData.
-// data.js 准备好 window.appData 后，执行第一次页面渲染。
-render();
+// data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
 loadDatabaseActivities();
 loadNewsFeed();
