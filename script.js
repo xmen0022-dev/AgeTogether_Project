@@ -1,29 +1,79 @@
 ﻿const app = document.querySelector("#app");
+// The app constant above points to the main page container.
+// 上面的 app 常量指向主页面容器。
+// Floating pet button shown on selected pages.
+// 右下角桌宠按钮，只在指定页面显示。
 const pet = document.querySelector("#pet");
+
+// Top navigation buttons used to switch between pages.
+// 顶部导航按钮，用于切换不同页面。
 const nav = [...document.querySelectorAll(".top-nav button")];
 
+// Current page route.
+// 当前所在页面。
 let route = "home";
+
+// Current Social tab.
+// Social 页面当前选中的标签页。
 let socialTab = "activities";
+
+// Activities can be shown as cards or on a map.
+// 活动可以用列表或地图两种方式展示。
 let activityView = "list";
+
+// Leaflet map instance; null means no map is mounted.
+// Leaflet 地图对象，为 null 表示当前没有地图。
 let activityMap = null;
+
+// User-selected AI response preferences.
+// 用户选择的 AI 回复语言和语气偏好。
 let aiPreferences = { language: "en-AU", style: "simple" };
+
+// Request counter prevents older AI replies from overwriting newer ones.
+// 请求编号用于避免旧的 AI 回复覆盖新的回复。
 let aiRequestNumber = 0;
+
+// Accessibility text-size level, from 1 to 5.
+// 无障碍字号档位，范围是 1 到 5。
 let textSizeLevel = 3;
+
+// Allowed route names.
+// 允许访问的页面名称。
 const validRoutes = new Set(["home", "letter", "social", "profile", "ai"]);
+
+// Pages where the floating pet should be visible.
+// 需要显示桌宠入口的页面。
 const pagesWithPet = new Set(["letter", "social", "profile", "ai"]);
+
+// Expose preferences so other modules can read them if needed.
+// 暴露 AI 偏好，方便其他模块读取。
 window.aiPreferences = aiPreferences;
 
+// Static data loaded from data.js.
+// 从 data.js 读取的初始数据。
 const appData = window.appData || {};
+
+// Local ID generator for prototype-only records.
+// 本地 ID 生成器，用于原型中的临时数据。
 let idSeed = appData.nextIdStart || 2000;
 const nextId = () => idSeed++;
+
+// Deep-copy the app state so UI edits do not mutate the original data object.
+// 深拷贝应用状态，避免直接修改原始数据对象。
 const state = JSON.parse(JSON.stringify(appData.state || {}));
 
 // Profile is saved to this device's localStorage (not a server account), so
 // it survives a refresh but stays private to this browser.
+// 个人资料保存到本机浏览器，不依赖账号或服务器。
 const PROFILE_STORAGE_KEY = "agetogether:profile";
+
+// Message shown if local profile saving fails.
+// 本地保存失败时显示的提示信息。
 let profileSaveError = "";
 
 function loadSavedProfile() {
+  // Load saved profile data from this browser.
+  // 从当前浏览器读取已保存的个人资料。
   try {
     const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
     if (!saved) return;
@@ -37,6 +87,8 @@ function loadSavedProfile() {
 }
 
 function saveProfileLocally() {
+  // Save profile data to this browser only.
+  // 只把个人资料保存到当前浏览器。
   try {
     localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(state.profile));
     profileSaveError = "";
@@ -48,14 +100,26 @@ function saveProfileLocally() {
   }
 }
 
+// Apply any saved profile before the first render/data load.
+// 首次渲染前先加载本地保存的个人资料。
 loadSavedProfile();
 
+// Static activities are kept as a fallback when the database API fails.
+// 静态活动数据用于数据库接口失败时兜底。
 const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
+
+// Activity data source and loading state.
+// 活动数据来源和加载状态。
 let activitiesSource = "static";
 let activitiesLoading = false;
 let activitiesError = "";
 
+// Static news items are kept as a fallback when the news API fails.
+// 静态新闻数据用于新闻接口失败时兜底。
 const staticNewsItems = JSON.parse(JSON.stringify(state.newsItems || []));
+
+// News data source and loading state.
+// 新闻数据来源和加载状态。
 let newsSource = "static";
 let newsLoading = false;
 let newsError = "";
@@ -63,9 +127,19 @@ let newsError = "";
 // Defaults to Melbourne CBD until the user opts in to sharing their real
 // location. Nothing is requested automatically - see the "Use my location"
 // button in the Social location card.
+// 默认使用墨尔本 CBD；只有用户点击按钮后才请求真实定位。
 let userLocation = { lat: -37.8136, lng: 144.9631, label: "Melbourne CBD, VIC" };
+
+// Location permission/status value used by the location card.
+// 定位状态，用于控制定位卡片的显示。
 let locationStatus = "default"; // "default" | "locating" | "granted" | "denied" | "error"
+
+// Human-readable location message shown under the card.
+// 定位提示信息，显示在定位卡片下方。
 let locationMessage = "";
+
+// Letter form state. The preview, download, and email all read from this object.
+// 写信表单状态，预览、下载和邮件发送都从这里读取。
 const letterDraft = {
   recipientName: "",
   recipientEmail: "",
@@ -75,13 +149,21 @@ const letterDraft = {
   textColor: "ink",
   font: "serif",
 };
+
+// Tracks notification counts the user has already seen.
+// 记录用户已经看过的通知数量。
 const notificationSeen = {
   social: 0,
 };
+
+// Set the initial text-size class.
+// 设置初始字号样式。
 applyTextSize();
 /* ------------------------------------------------------------------ */
 
 function setRoute(nextRoute) {
+  // Validate the requested route and remove the map when leaving Social.
+  // 校验目标页面；离开 Social 时清理地图对象。
   const targetRoute = validRoutes.has(nextRoute) ? nextRoute : "letter";
   if (targetRoute !== "social" && activityMap) {
     activityMap.remove();
@@ -95,14 +177,20 @@ function setRoute(nextRoute) {
 }
 
 function parentRoute(routeName) {
+  // Kept as a helper in case nested routes are added later.
+  // 预留函数，之后如果增加子页面可以在这里统一处理。
   return routeName;
 }
 
 function activeRoute() {
+  // Returns the nav route that should be highlighted.
+  // 返回当前应该高亮的导航页面。
   return parentRoute(route);
 }
 
 function pageHead(title, subtitle) {
+  // Shared page heading template.
+  // 通用页面标题模板。
   return `
     <section class="page-head">
       <h1>${title}</h1>
@@ -112,16 +200,20 @@ function pageHead(title, subtitle) {
 }
 
 function applyTextSize() {
-  // My feature / 鎴戠殑鍔熻兘锛歛pply one of five global text-size classes.
-  // The actual font sizes are defined in styles.css on body.text-size-1
-  // through body.text-size-5. Replacing the class keeps the change simple and global.
-  // 鎶?1 鍒?5 妗ｅ瓧浣撹缃浆鎹㈡垚 body 涓婄殑 CSS class銆傚叿浣撳瓧鍙峰啓鍦?  // styles.css 閲岋紝杩欐牱椤甸潰澶ч儴鍒嗘枃瀛楅兘浼氳窡鐫€ body 鐨勫瓧鍙蜂竴璧峰彉鍖栥€?  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
+  // Apply one of five global text-size classes.
+  // 应用五档全局字号中的一档。
+  // Font-size classes are defined in styles.css from body.text-size-1 to text-size-5.
+  // 具体字号在 styles.css 中定义。
+  // This keeps most page text in sync with the selected accessibility size.
+  // 这样页面大部分文字会跟随无障碍字号变化。
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
 function activityIcon(category) {
   // Use numeric HTML entities for controlled activity icons.
+  // 使用 HTML 实体控制活动图标。
   // This avoids broken emoji encoding in the Social cards.
+  // 这样可以减少 Social 卡片里的表情编码问题。
   const value = `${category || ""}`.toLowerCase();
   if (value.includes("library")) return "&#x1F4DA;";
   if (value.includes("garden") || value.includes("park")) return "&#x1F331;";
@@ -133,22 +225,24 @@ function activityIcon(category) {
 function notificationCounts() {
   // This prototype does not have real-time users yet, so Home shows a small
   // Social update when activities are available.
+  // 当前原型没有实时用户系统，所以首页只显示 Social 的简单更新提示。
   return {
     social: Math.min(2, state.activities.length),
   };
 }
 
 function markNotificationsSeen(routeName) {
-  // My feature / 鎴戠殑鍔熻兘锛歶pdate the read baseline for the section the user opened.
-  // This makes notification chips disappear after they are clicked or
-  // after the user manually visits the related page.
-  // 鐢ㄦ埛鐐瑰嚮閫氱煡鎴栦富鍔ㄨ繘鍏ュ搴旈〉闈㈠悗锛岃繖閲屼細鎶婂綋鍓嶆暟閲忚涓哄凡璇诲熀鍑嗭紝
+  // Update the read baseline for the section the user opened.
+  // 用户打开某个页面后，更新该页面的已读基准。
+  // This makes notification chips disappear after they are clicked or manually visited.
+  // 这样通知按钮在用户访问后会消失。
   const counts = notificationCounts();
   if (routeName === "social") notificationSeen.social = counts.social;
 }
 
 function homeNotifications() {
   // Render only unread Home notification buttons.
+  // 只渲染首页中还未读的通知按钮。
   const counts = notificationCounts();
   return [
     { key: "social", label: "Social", route: "social" },
@@ -165,8 +259,11 @@ function homeNotifications() {
 }
 
 function mapDiscoveryPlace(place) {
+  // Convert a database place record into the activity card format.
+  // 把数据库地点记录转换成活动卡片需要的格式。
   const category = place.sub_theme || place.theme || "Community place";
   // Use an ASCII separator so place distances render consistently.
+  // 使用普通横线，避免距离文字出现编码或显示问题。
   const distance = place.distance_km ? ` - ${place.distance_km} km away` : "";
   return {
     id: `place-${place.place_id}`,
@@ -190,6 +287,8 @@ function mapDiscoveryPlace(place) {
 }
 
 async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation.lng) {
+  // Load nearby community places from the backend API.
+  // 从后端接口读取附近社区地点。
   activitiesLoading = true;
   activitiesError = "";
   if (route === "social") renderSocial();
@@ -198,6 +297,7 @@ async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation
     // limit=200 comfortably covers all Tier 1 discovery places currently in
     // the database (115) so the Activities map shows everything, not just
     // the closest handful. The server still enforces its own hard cap.
+    // limit=200 可以覆盖当前数据库里的主要地点，地图不会只显示少量最近地点。
     const response = await fetch(`/api/nearby-places?lat=${lat}&lng=${lng}&limit=200`);
     if (!response.ok) throw new Error(`Database API returned ${response.status}`);
     const payload = await response.json();
@@ -219,6 +319,7 @@ async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation
 function newsIcon(category) {
   // Map an SBS RSS category to a controlled icon. Same approach as
   // activityIcon() - numeric HTML entities, so encoding stays predictable.
+  // 把 SBS 新闻分类映射成固定图标，避免表情编码不稳定。
   const value = `${category || ""}`.toLowerCase();
   if (value.includes("health") || value.includes("covid")) return "&#x1FA7A;";
   if (value.includes("politic")) return "&#x1F3DB;";
@@ -230,6 +331,7 @@ function newsIcon(category) {
 function mapNewsArticle(article) {
   // The CSV's first listed category becomes the badge tag; categories are
   // semicolon-separated (e.g. "Australia; Health; Life").
+  // CSV 里第一个分类会作为新闻标签显示。
   const primaryCategory = (article.category || "").split(";")[0].trim() || "News";
   return {
     id: `news-${article.article_url || article.title}`,
@@ -245,6 +347,8 @@ function mapNewsArticle(article) {
 }
 
 async function loadNewsFeed() {
+  // Load news from the backend; fall back to static data if it fails.
+  // 从后端读取新闻；失败时使用静态新闻兜底。
   newsLoading = true;
   newsError = "";
   if (route === "social") renderSocial();
@@ -269,6 +373,8 @@ async function loadNewsFeed() {
 }
 
 function formatNewsDate(isoDate) {
+  // Format ISO dates into a short Australian date label.
+  // 把 ISO 日期转换成澳洲常用的简短日期格式。
   if (!isoDate) return "";
   const parsed = new Date(isoDate);
   if (Number.isNaN(parsed.getTime())) return "";
@@ -276,6 +382,8 @@ function formatNewsDate(isoDate) {
 }
 
 const AU_STATE_ABBREVIATIONS = {
+  // State names returned by geocoding are shortened for compact display.
+  // 地理编码返回的州名会缩写，方便在界面中显示。
   Victoria: "VIC",
   "New South Wales": "NSW",
   Queensland: "QLD",
@@ -287,6 +395,8 @@ const AU_STATE_ABBREVIATIONS = {
 };
 
 async function useMyLocation() {
+  // Ask the browser for location only after the user clicks the button.
+  // 只有用户点击按钮后才请求浏览器定位权限。
   if (!navigator.geolocation) {
     locationStatus = "error";
     locationMessage = "This browser doesn't support location access.";
@@ -309,6 +419,7 @@ async function useMyLocation() {
       // Reverse-geocode with Nominatim (OpenStreetMap) - same data source as
       // the map tiles, so no separate API key is needed. If this fails we
       // still keep the real coordinates and just show them directly.
+      // 使用 Nominatim 反查 suburb；失败时仍然保留坐标。
       try {
         const response = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
@@ -340,12 +451,13 @@ async function useMyLocation() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Home / 棣栭〉                                                          */
+/* Home                                                               */
 /* ------------------------------------------------------------------ */
 
 function renderHome() {
   // Landing page: explains the purpose of the service and gives simple entry
   // points into the main tools.
+  // 首页用于介绍应用，并提供进入主要功能的入口。
   const notifications = homeNotifications();
   const cards = [
     homeCard("letter", "letter-card", "&#x2709;", "Letter", "Write a personal letter with your choice of paper, colour, and font."),
@@ -383,6 +495,8 @@ function renderHome() {
 }
 
 function homeCard(routeName, className, icon, title, copy) {
+  // Build one large button card for the Home page.
+  // 生成首页里的一个功能入口卡片。
   return {
     routeName,
     html: `
@@ -403,6 +517,8 @@ function homeCard(routeName, className, icon, title, copy) {
 /* ------------------------------------------------------------------ */
 
 const letterPaperOptions = [
+  // Paper colour options for Letter.
+  // Letter 信纸颜色选项。
   { key: "cream", label: "Cream" },
   { key: "rose", label: "Rose" },
   { key: "sky", label: "Sky" },
@@ -412,6 +528,8 @@ const letterPaperOptions = [
 ];
 
 const letterTextOptions = [
+  // Text colour options for Letter.
+  // Letter 文字颜色选项。
   { key: "ink", label: "Ink" },
   { key: "navy", label: "Navy" },
   { key: "forest", label: "Forest" },
@@ -420,12 +538,16 @@ const letterTextOptions = [
 ];
 
 const letterFontOptions = [
+  // Font style options for Letter.
+  // Letter 字体样式选项。
   { key: "serif", label: "Serif" },
   { key: "sans", label: "Clear sans" },
   { key: "hand", label: "Handwritten" },
 ];
 
 function renderLetter() {
+  // Render the letter editor, style toolbar, and live preview.
+  // 渲染写信表单、样式菜单和实时预览。
   app.innerHTML = `
     ${pageHead("Letter", "Write a personal message without creating an account")}
     <section class="container letter-shell">
@@ -505,6 +627,8 @@ function renderLetter() {
 }
 
 function letterChoice(type, item) {
+  // Build one style choice button and mark it active when selected.
+  // 生成一个样式按钮，并根据当前选择显示选中状态。
   const active =
     (type === "paper" && letterDraft.paper === item.key) ||
     (type === "color" && letterDraft.textColor === item.key) ||
@@ -515,6 +639,8 @@ function letterChoice(type, item) {
 }
 
 function letterPreviewMarkup() {
+  // Build the preview letter using the current draft and selected style.
+  // 根据当前草稿和样式生成右侧预览信件。
   const body = letterDraft.body.trim() || "Write your message on the left. Your letter preview will appear here.";
   const today = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
 
@@ -527,15 +653,21 @@ function letterPreviewMarkup() {
 }
 
 function updateLetterPreview() {
+  // Refresh only the preview area while the user types.
+  // 用户输入时只刷新预览区域，不重建整个页面。
   const preview = document.querySelector("#letter-preview");
   if (preview) preview.innerHTML = letterPreviewMarkup();
 }
 
 function letterPlainText() {
+  // Plain text version used as email fallback text.
+  // 邮件备用纯文本内容。
   return letterDraft.body.trim() || "";
 }
 
 const letterDownloadStyles = {
+  // Inline CSS values used by downloaded HTML and styled email.
+  // 下载 HTML 和邮件模板使用的内联样式值。
   paper: {
     cream: "#fff5dc",
     rose: "#ffe7e0",
@@ -559,10 +691,14 @@ const letterDownloadStyles = {
 };
 
 function selectedLetterStyle(group, key, fallback) {
+  // Safely read a style value, falling back if the key is unknown.
+  // 安全读取样式值，如果 key 不存在就使用默认值。
   return letterDownloadStyles[group][key] || letterDownloadStyles[group][fallback];
 }
 
 function downloadableLetterMarkup() {
+  // Build a self-contained letter body for downloads.
+  // 生成下载文件中使用的完整信件内容。
   const today = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
   const body = letterDraft.body.trim() || "Write your message before downloading.";
   const paper = selectedLetterStyle("paper", letterDraft.paper, "cream");
@@ -578,6 +714,8 @@ function downloadableLetterMarkup() {
 }
 
 function downloadLetter() {
+  // Create and download an HTML file that keeps the selected letter styling.
+  // 创建并下载 HTML 文件，保留选择的信纸、颜色和字体。
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -604,6 +742,8 @@ function downloadLetter() {
 }
 
 async function sendLetter() {
+  // Send the current letter through the backend email endpoint.
+  // 通过后端邮件接口发送当前信件。
   const email = letterDraft.recipientEmail.trim();
   if (!email) {
     alert("Please enter a recipient email first.");
@@ -648,10 +788,12 @@ async function sendLetter() {
   }
 }
 
-/* Social / 绀句氦涓庣ぞ鍖烘椿鍔?                                             */
+/* Social and community activities                                    */
 /* ------------------------------------------------------------------ */
 
 function locationCard() {
+  // Render the user's current location state and the location permission button.
+  // 渲染当前定位状态和“使用我的位置”按钮。
   const isDefault = locationStatus === "default" || locationStatus === "denied" || locationStatus === "error";
   const buttonLabel = locationStatus === "locating" ? "Locating..." : "&#x1F4CD; Use my location";
   return `
@@ -670,6 +812,8 @@ function locationCard() {
 }
 
 function renderSocial() {
+  // Render the Social page and choose the current tab content.
+  // 渲染 Social 页面，并根据当前标签页选择内容。
   const content = {
     activities: renderActivities(),
     news: renderNews(),
@@ -699,13 +843,17 @@ function renderSocial() {
 }
 
 function activityFilters() {
+  // Build filter chips from the categories currently available in activity data.
+  // 根据当前活动数据生成分类筛选按钮。
   return ["All", ...new Set(state.activities.map((a) => a.category).filter(Boolean))];
 }
 
 function renderActivities() {
   // Activity cards are generated from `state.activities`.
+  // 活动卡片来自 state.activities。
   // The filter is a simple category match, which demonstrates a transparent
   // data-driven discovery baseline suitable for Iteration 1.
+  // 当前筛选是简单分类匹配，便于演示数据驱动的发现流程。
   const filtered = state.activities.filter((a) => state.activityFilter === "All" || a.category === state.activityFilter);
   return `
     <h2>Find nearby community activities</h2>
@@ -749,7 +897,9 @@ function renderActivities() {
 
 function activity(a) {
   // Reusable card for one activity/place suggestion.
+  // 单个活动或地点建议的通用卡片。
   // The same component is used in both the Activities tab and Saved tab.
+  // Activities 和 Saved 两个标签页都会复用这个组件。
   return `
     <article class="activity-card">
       <div class="card-top">
@@ -775,12 +925,16 @@ function activity(a) {
 }
 
 function escapeHtml(value) {
+  // Escape user/data text before putting it into HTML strings.
+  // 把用户或数据文本放入 HTML 前先进行转义，避免 HTML 注入。
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 }
 
 function initActivityMap(activities) {
   // Builds (or rebuilds) the Leaflet map for the Activities > Map view.
+  // 为 Activities 的地图视图创建或重建 Leaflet 地图。
   // Called after app.innerHTML has been set, so #activity-map exists in the DOM.
+  // 这个函数在页面 HTML 渲染后调用，所以 #activity-map 已经存在。
   const container = document.querySelector("#activity-map");
   if (!container || typeof L === "undefined") return;
 
@@ -813,12 +967,15 @@ function initActivityMap(activities) {
     activityMap.fitBounds(bounds.pad(0.25));
   } else {
     // No coordinates on any filtered activity - fall back to a Melbourne CBD view.
-    // 濡傛灉绛涢€夊悗鐨勬椿鍔ㄩ兘娌℃湁鍧愭爣锛屽氨鍥為€€鍒板ⅷ灏旀湰 CBD 鐨勯粯璁ゅ湴鍥捐鍥俱€?    activityMap.setView([-37.8136, 144.9631], 12);
+    // 如果筛选后的活动都没有坐标，则保留默认墨尔本 CBD 视图。
+    // The old setView fallback is intentionally left inactive in this comment-only pass.
+    // 旧的 setView 兜底逻辑当前保持不启用。
   }
 }
 
 function renderNews() {
   // News cards are generated from `state.newsItems`.
+  // 新闻卡片来自 state.newsItems。
   return `
     <h2>Useful news & information</h2>
     <p class="muted section-copy">
@@ -838,8 +995,10 @@ function renderNews() {
 
 function news(n) {
   // Reusable card for one news item. Saved state controls the button label.
+  // 单条新闻的通用卡片，保存状态会影响按钮文字。
   // n.icon is a controlled HTML entity (not user input), so it is not escaped -
   // same treatment as a.icon in activity() below.
+  // n.icon 是固定 HTML 实体，不是用户输入，所以这里不转义。
   const dateLabel = formatNewsDate(n.publishedDate);
   return `
     <article class="news-card">
@@ -862,7 +1021,9 @@ function news(n) {
 
 function renderSaved() {
   // Saved view is derived from the data, not stored as a separate list.
+  // Saved 页面由现有数据筛选生成，不单独保存列表。
   // It collects activities/news where `saved === true`.
+  // 它会收集 saved 为 true 的活动和新闻。
   const savedActivities = state.activities.filter((a) => a.saved);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
@@ -891,22 +1052,26 @@ function renderSaved() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Profile / 涓汉璧勬枡                                                   */
+/* Profile                                                            */
 /* ------------------------------------------------------------------ */
 
 function renderProfile() {
   // Profile page reads all fields from `state.profile`.
+  // Profile 页面从 state.profile 读取所有字段。
   // Saving the form writes values back into state, then re-renders this page.
+  // 保存表单时会把输入写回 state，然后重新渲染页面。
   const p = state.profile;
   app.innerHTML = `
     ${pageHead("My Profile", "Manage your personal information and privacy settings")}
     <section class="container narrow">
       <!--
-        My feature / 鎴戠殑鍔熻兘锛歠ive-level text-size control for accessibility.
+        Five-level text-size control for accessibility.
+        五档字号控制，用于提升可读性。
         These buttons only change the visual reading size of the prototype;
+        这些按钮只改变原型的视觉字号。
         they do not change profile data or require any account/login information.
-        杩欓噷鎻愪緵 1 鍒?5 妗ｉ槄璇诲瓧鍙疯皟鑺傦紝鍙奖鍝嶉〉闈㈡樉绀哄ぇ灏忥紝
-        涓嶄慨鏀逛釜浜鸿祫鏂欙紝涔熶笉闇€瑕佺櫥褰曡处鍙枫€?      -->
+        它们不会修改个人资料，也不需要账号登录。
+      -->
       <section class="panel profile-panel">
         <h2>Text size</h2>
         <div class="text-size-picker" aria-label="Text size">
@@ -951,11 +1116,13 @@ function renderProfile() {
 
 function profileField(id, label, value) {
   // Reusable input field. The id naming is used later when saving profile data.
+  // 通用输入框，id 命名会在保存个人资料时再次使用。
   return `<div class="field"><label>${escapeHtml(label)}</label><input id="profile-${id}" value="${escapeHtml(value)}" /></div>`;
 }
 
 function toggle(t) {
   // Privacy toggle row. Clicking the row flips the `on` value in state.
+  // 隐私开关行；点击后会切换 state 里的 on 状态。
   return `
     <article class="toggle-row ${t.on ? "on" : ""}" data-toggle-key="${t.key}">
       <span class="switch"></span>
@@ -966,12 +1133,14 @@ function toggle(t) {
 }
 
 /* ------------------------------------------------------------------ */
-/* AI page and Companion integration / AI 椤甸潰鍜屾瀹犻泦鎴?               */
+/* AI page and Companion integration                                  */
 /* ------------------------------------------------------------------ */
 
 function renderAI() {
   // Rebuild the AI page whenever it is opened, then let pet.js mount the setup panel.
+  // 每次打开 AI 页面都会重建页面，然后让 pet.js 挂载设置面板。
   // Reminder values come from the Pet module so the page reflects saved settings.
+  // 提醒设置来自 Pet 模块，因此页面能显示已保存的提醒状态。
   const reminders = window.AgePet?.getReminderSettings?.() ?? {
     water: { enabled: true, time: "10:00" },
     medication: { enabled: true, time: "12:00" },
@@ -979,6 +1148,8 @@ function renderAI() {
   };
 
   const reminderRow = (kind, label, copy) => `
+    <!-- One reminder row with an enabled checkbox and a time input. -->
+    <!-- 单条提醒设置，包含启用开关和时间输入。 -->
     <div class="reminder-row">
       <label class="reminder-toggle">
         <input type="checkbox" data-ai-reminder="${kind}" data-ai-reminder-field="enabled" ${reminders[kind].enabled ? "checked" : ""} />
@@ -1016,9 +1187,12 @@ function renderAI() {
         </div>
         <!--
           Companion setup mount point.
+          桌宠设置区域的挂载点。
           pet.js fills this empty container with the photo picker, status card,
+          pet.js 会把照片选择器、状态卡片填入这里。
           and companion history after the AI page has been rendered.
-          Companion 璁剧疆鍖哄煙鐨勬寕杞界偣銆?          AI 椤甸潰娓叉煋瀹屾垚鍚庯紝pet.js 浼氭妸鐓х墖閫夋嫨鍣ㄣ€佺姸鎬佸崱鐗囧拰鍘嗗彶璁板綍濉埌杩欓噷銆?        -->
+          AI 页面渲染完成后会显示桌宠历史记录。
+        -->
         <section class="panel" id="pet-setup"></section>
         <section class="ai-preferences panel">
           <h2>How would you like me to speak?</h2>
@@ -1056,20 +1230,30 @@ function renderAI() {
   `;
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
-  // 浣跨敤 optional chaining 鍙互淇濊瘉 Companion 妯″潡涓嶅彲鐢ㄦ椂锛孉I 椤甸潰浠嶇劧鑳芥甯告墦寮€銆?  window.AgePet?.mountSetup();
+  // optional chaining 可以保证 Companion 模块不可用时页面仍能打开。
+  // The setup call is left inactive in this comment-only pass.
+  // 当前保持 setup 调用不启用。
 }
 
 // Send one named task to the server and render the response as plain text.
-// 灏嗕竴涓懡鍚嶄换鍔″彂閫佸埌鏈嶅姟绔紝骞朵互绾枃鏈畨鍏ㄦ樉绀鸿繑鍥炵粨鏋溿€?
+// 把指定任务发送到服务器，并以纯文本方式显示回复。
+// The response is written as textContent so returned text is not treated as HTML.
+// 回复使用 textContent 写入，避免把返回内容当成 HTML 执行。
 async function askCompanion(task, input) {
+  // Locate the output panel and ignore empty questions.
+  // 找到回复区域，并忽略空问题。
   const answer = document.querySelector("#ai-answer");
   if (!answer || !input.trim()) return;
 
+  // Increment request id so only the newest answer can update the page.
+  // 增加请求编号，确保只有最新回复可以更新页面。
   const requestNumber = ++aiRequestNumber;
   answer.className = "ai-answer loading";
   answer.textContent = "Your companion is thinking...";
 
   try {
+    // Send task, input, and current AI preferences to the backend.
+    // 把任务、输入内容和当前 AI 偏好发送到后端。
     const response = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1082,9 +1266,11 @@ async function askCompanion(task, input) {
     answer.className = "ai-answer";
     answer.textContent = payload.text || "Your companion did not have an answer for that one.";
     // Keep the full answer in the panel, but show a short, safe version above Pet.
-    // 瀹屾暣绛旀鐣欏湪闈㈡澘涓紝鍚屾椂鎶婄畝鐭函鏂囨湰鍥炲鏄剧ず鍦?Pet 澶撮《銆?
+    // 完整回复留在面板中，同时让桌宠显示一段简短回复。
     window.AgePet?.speak(payload.text, { kind: "ai" });
   } catch (error) {
+    // Show a friendly error message if the backend or network fails.
+    // 如果后端或网络失败，显示友好的错误提示。
     if (requestNumber !== aiRequestNumber) return;
     answer.className = "ai-answer error";
     answer.textContent = error.message || "The companion is unavailable right now.";
@@ -1092,13 +1278,16 @@ async function askCompanion(task, input) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Router / render / 璺敱涓庢覆鏌?                                         */
+/* Router and render                                                   */
 /* ------------------------------------------------------------------ */
 
 function render() {
   // Rebuild the visible UI from the current route and state.
+  // 根据当前路由和状态重建可见界面。
   if (!validRoutes.has(route)) route = "letter";
   nav.forEach((button) => {
+    // Highlight the active navigation button.
+    // 高亮当前页面对应的导航按钮。
     const buttonRoute = button.dataset.route;
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
@@ -1112,16 +1301,20 @@ function render() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Event handling / 浜嬩欢澶勭悊                                             */
+/* Event handling                                                       */
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
   // Event delegation keeps the interaction code in one place. Instead of
+  // 事件委托把点击逻辑集中在一个地方。
   // attaching separate click listeners after every render, the document listens
+  // 不需要每次渲染后重新给按钮绑定监听器。
   // once and checks which data-* attribute was clicked.
-  // 浜嬩欢濮旀墭鎶婁氦浜掗€昏緫闆嗕腑鍦ㄤ竴涓湴鏂广€?  // 姣忔 render 鍚庝笉鐢ㄩ噸鏂扮粰鎸夐挳缁戝畾鐩戝惉鍣紝鍙渶瑕佺敱 document 缁熶竴鍒ゆ柇鐐瑰嚮浜嗗摢涓?data-* 鍏冪礌銆?
+  // document 统一判断点击了哪个 data-* 元素。
   // Navigation: any element with data-route changes the active screen. The
+  // 导航：带 data-route 的元素会切换页面。
   // render functions recreate the visible page from the current state object.
+  // 页面会根据当前 state 重新渲染。
   const routeTarget = event.target.closest("[data-route]");
   if (routeTarget) {
     setRoute(routeTarget.dataset.route);
@@ -1129,8 +1322,11 @@ document.addEventListener("click", (event) => {
   }
 
   // Social tab switching: this is local UI state only. In a real backend setup,
+  // Social 标签切换只属于本地 UI 状态。
   // this would usually remain on the frontend because it does not need to be
+  // 真实后端中这类状态通常也只留在前端。
   // saved to the database.
+  // 它不需要保存到数据库。
   const tabTarget = event.target.closest("[data-social-tab]");
   if (tabTarget) {
     socialTab = tabTarget.dataset.socialTab;
@@ -1140,10 +1336,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- AI Companion / AI 鍔╂墜 ---------------- */
+  /* ---------------- AI Companion ---------------- */
 
   // Quick questions use the same server task as free-form questions.
-  // 蹇嵎闂鍜岃嚜鐢辫緭鍏ュ叡鐢ㄥ悓涓€涓湇鍔＄ ask 浠诲姟銆?
+  // 快捷问题和手动输入使用同一个服务端 ask 任务。
+  // They share the same ask task as manual input.
+  // 这样可以减少重复逻辑。
   const aiQuestion = event.target.closest("[data-ai-question]");
   if (aiQuestion) {
     askCompanion("ask", aiQuestion.dataset.aiQuestion);
@@ -1151,7 +1349,9 @@ document.addEventListener("click", (event) => {
   }
 
   // Action buttons provide carefully worded prompts for common use cases.
-  // 鎿嶄綔鎸夐挳浣跨敤棰勫厛鍐欏ソ鐨勬彁绀猴紝闄嶄綆鐢ㄦ埛缁勭粐闂鐨勮礋鎷呫€?
+  // AI 操作按钮使用预设提示词处理常见需求。
+  // This reduces the effort needed to write a useful question.
+  // 这样用户不需要自己组织复杂问题。
   const aiAction = event.target.closest("[data-ai-action]");
   if (aiAction) {
     const action = aiAction.dataset.aiAction;
@@ -1167,6 +1367,8 @@ document.addEventListener("click", (event) => {
 
   const letterPaper = event.target.closest("[data-letter-paper]");
   if (letterPaper) {
+    // Update paper colour and rebuild the Letter page.
+    // 更新信纸颜色并重新渲染 Letter 页面。
     letterDraft.paper = letterPaper.dataset.letterPaper;
     renderLetter();
     return;
@@ -1174,6 +1376,8 @@ document.addEventListener("click", (event) => {
 
   const letterColor = event.target.closest("[data-letter-color]");
   if (letterColor) {
+    // Update text colour and rebuild the Letter page.
+    // 更新文字颜色并重新渲染 Letter 页面。
     letterDraft.textColor = letterColor.dataset.letterColor;
     renderLetter();
     return;
@@ -1181,16 +1385,21 @@ document.addEventListener("click", (event) => {
 
   const letterFont = event.target.closest("[data-letter-font]");
   if (letterFont) {
+    // Update font style and rebuild the Letter page.
+    // 更新字体样式并重新渲染 Letter 页面。
     letterDraft.font = letterFont.dataset.letterFont;
     renderLetter();
     return;
   }
 
-  /* ---------------- Social / 绀句氦鍔熻兘 ---------------- */
+  /* ---------------- Social ---------------- */
 
   // Activity category filter. This uses the activities loaded from data.js and
+  // 活动分类筛选基于当前已加载的活动数据。
   // filters them in the browser. If the dataset becomes large, this should move
+  // 目前直接在浏览器里筛选。
   // to an API query such as GET /activities?category=walking.
+  // 如果数据变大，之后可以改成后端查询。
   const activityFilter = event.target.closest("[data-activity-filter]");
   if (activityFilter) {
     state.activityFilter = activityFilter.dataset.activityFilter;
@@ -1199,6 +1408,7 @@ document.addEventListener("click", (event) => {
   }
 
   // Switch the Activities tab between the card list and the Leaflet map.
+  // 在活动卡片列表和 Leaflet 地图之间切换。
   const activityViewTarget = event.target.closest("[data-activity-view]");
   if (activityViewTarget) {
     activityView = activityViewTarget.dataset.activityView;
@@ -1207,9 +1417,13 @@ document.addEventListener("click", (event) => {
   }
 
   // Save/unsave a community activity. Backend mapping:
+  // 保存或取消保存一个社区活动。
   // POST /saved-items with { type: "activity", id } or
+  // 如果接后端，可对应 POST /saved-items。
   // DELETE /saved-items/activity/:id.
-  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴涓ぞ鍖烘椿鍔ㄣ€傚悗绔槧灏勶細
+  // 取消保存可对应 DELETE /saved-items/activity/:id。
+  // This prototype keeps the saved activity state locally in the browser.
+  // 当前原型只在浏览器状态中保存。
   const saveActivity = event.target.closest("[data-save-activity]");
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
@@ -1220,9 +1434,13 @@ document.addEventListener("click", (event) => {
   }
 
   // Save/unsave a news item. Backend mapping:
+  // 保存或取消保存一条新闻。
   // POST /saved-items with { type: "news", id } or
+  // 如果接后端，可对应 POST /saved-items。
   // DELETE /saved-items/news/:id.
-  // 淇濆瓨鎴栧彇娑堜繚瀛樹竴鏉℃柊闂汇€傚悗绔槧灏勶細
+  // 取消保存可对应 DELETE /saved-items/news/:id。
+  // This prototype keeps the saved news state locally in the browser.
+  // 当前原型只在浏览器状态中保存。
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
     const id = Number(saveNews.dataset.saveNews);
@@ -1233,12 +1451,19 @@ document.addEventListener("click", (event) => {
   }
 
   // Join/unjoin an activity. Backend mapping:
+  // 参加或取消参加一个活动。
   // POST /activity-registrations with { activityId } or
+  // 如果接后端，可对应 POST /activity-registrations。
   // DELETE /activity-registrations/:activityId.
+  // 取消参加可对应 DELETE /activity-registrations/:activityId。
   // This is one of the clearest "backend interaction" points because a real
+  // 这是最明显的后端交互点之一。
   // site would need to save the registration, possibly send organiser details,
+  // 真实网站需要保存报名、发送组织者信息。
   // and respect the profile sharing toggles.
-  // 鍙傚姞鎴栧彇娑堝弬鍔犱竴涓椿鍔ㄣ€傚悗绔槧灏勶細
+  // 同时需要遵守用户的资料分享设置。
+  // In this prototype the joined/interested state is local only.
+  // 当前原型中 joined/interested 状态只保存在本地。
   const joinActivity = event.target.closest("[data-join-activity]");
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
@@ -1248,12 +1473,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  /* ---------------- Profile / 涓汉璧勬枡鍔熻兘 ---------------- */
+  /* ---------------- Profile ---------------- */
 
   // Toggle profile privacy settings. Backend mapping:
+  // 切换 Profile 隐私设置。
   // PATCH /profile/share-settings with { key, on }.
+  // 如果接后端，可对应 PATCH /profile/share-settings。
   // These toggles decide what information may be shared when joining activities.
-  // 鍒囨崲 Profile 闅愮璁剧疆銆傚悗绔槧灏勶細
+  // 这些开关决定参加活动时哪些信息可以被分享。
+  // In this prototype these settings are local UI state.
+  // 当前原型中这些设置只是本地 UI 状态。
   const toggleRow = event.target.closest("[data-toggle-key]");
   if (toggleRow) {
     const key = toggleRow.dataset.toggleKey;
@@ -1265,20 +1494,25 @@ document.addEventListener("click", (event) => {
 
   const textSizeTarget = event.target.closest("[data-text-size]");
   if (textSizeTarget) {
-    // My feature / 鎴戠殑鍔熻兘锛歶pdate the global text-size class from Profile.
+    // Update the global text-size class from Profile.
+    // 从 Profile 页面更新全局字号样式。
     // After changing the level, renderProfile() refreshes only the Profile
+    // 更改后重新渲染 Profile 控件。
     // controls so the active button reflects the current size.
-    // 鐢ㄦ埛鐐瑰嚮 Profile 閲岀殑瀛楀彿鎸夐挳鍚庯紝鍏堟洿鏂板叏灞€妗ｄ綅鍜?body class锛?    // 鍐嶅埛鏂?Profile 鎺т欢锛岃褰撳墠閫変腑鐨勬寜閽姸鎬佹纭樉绀恒€?    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    // 这样当前选中的字号按钮能显示正确状态。
     applyTextSize();
     renderProfile();
     return;
   }
 
-  /* ---------------- Generic actions / 閫氱敤琛ㄥ崟鍔ㄤ綔 ---------------- */
+  /* ---------------- Generic actions ---------------- */
 
   // Form-style actions are routed through handleAction because they often need
+  // 表单类动作统一交给 handleAction 处理。
   // to read input values, validate them, create/update data objects, and then
+  // 这些动作通常需要读取输入、校验并更新数据。
   // re-render the affected page.
+  // 最后再重新渲染受影响的页面。
   const action = event.target.closest("[data-action]");
   if (action) {
     handleAction(action.dataset.action);
@@ -1286,8 +1520,12 @@ document.addEventListener("click", (event) => {
 });
 
 // Preferences are local UI state and are sent with the next API request.
-// 鍋忓ソ灞炰簬褰撳墠椤甸潰鐘舵€侊紝浼氶殢涓嬩竴娆?API 璇锋眰涓€璧峰彂閫併€?
+// 偏好设置属于本地 UI 状态。
+// They are included in the next AI request.
+// 下一次 AI 请求会带上这些偏好。
 document.addEventListener("input", (event) => {
+  // Letter fields update draft state immediately while typing.
+  // Letter 输入框会在用户输入时立即更新草稿状态。
   const letterField = event.target.closest("[data-letter-field]");
   if (!letterField) return;
   letterDraft[letterField.dataset.letterField] = letterField.value;
@@ -1295,14 +1533,20 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  // Change events are used for select boxes, checkboxes, and time inputs.
+  // change 事件用于下拉框、复选框和时间输入。
   const preference = event.target.closest("[data-ai-preference]");
   if (preference) {
+    // Store AI preference changes locally.
+    // 本地保存 AI 偏好变化。
     aiPreferences[preference.dataset.aiPreference] = preference.value;
     return;
   }
 
   // Save one reminder field without rebuilding the page or losing focus.
-  // 淇敼鎻愰啋鏃跺彧鏇存柊瀵瑰簲瀛楁锛屼笉閲嶅缓椤甸潰锛岄伩鍏嶈緭鍏ユ澶卞幓鐒︾偣銆?
+  // 保存单个提醒字段，不重建页面。
+  // This keeps the current input focused while reminder settings change.
+  // 这样修改提醒设置时输入框不会丢失焦点。
   const reminderInput = event.target.closest("[data-ai-reminder]");
   if (!reminderInput) return;
   const settings = window.AgePet?.getReminderSettings?.();
@@ -1314,22 +1558,32 @@ document.addEventListener("change", (event) => {
 });
 
 function handleAction(action) {
+  // Route command-style button clicks to the right feature.
+  // 把按钮命令分发到对应功能。
   if (action === "use-my-location") {
+    // Start browser geolocation flow.
+    // 开始浏览器定位流程。
     useMyLocation();
     return;
   }
 
   if (action === "download-letter") {
+    // Download the current letter as an HTML file.
+    // 将当前信件下载为 HTML 文件。
     downloadLetter();
     return;
   }
 
   if (action === "send-letter") {
+    // Send the current letter by email through the backend.
+    // 通过后端把当前信件发送为邮件。
     sendLetter();
     return;
   }
 
   if (action === "save-profile") {
+    // Copy form values back into state.profile.
+    // 把表单里的值复制回 state.profile。
     state.profile.fullName = document.querySelector("#profile-full-name")?.value ?? state.profile.fullName;
     state.profile.preferredName = document.querySelector("#profile-preferred-name")?.value ?? state.profile.preferredName;
     state.profile.age = document.querySelector("#profile-age")?.value ?? state.profile.age;
@@ -1339,6 +1593,8 @@ function handleAction(action) {
     state.profile.emergencyContact = document.querySelector("#profile-emergency")?.value ?? state.profile.emergencyContact;
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
     saveProfileLocally();
+    // Show a short saved confirmation.
+    // 显示短暂的保存成功提示。
     state.profileJustSaved = true;
     renderProfile();
     setTimeout(() => {
@@ -1348,9 +1604,12 @@ function handleAction(action) {
   }
 }
 // Floating companion shortcut: opens the AI Companion page. This is navigation
+// 右下角桌宠快捷入口会打开 AI Companion 页面。
 // only; the current AI page is static and does not call an external AI/backend.
-// 鍙充笅瑙掓瀹犲揩鎹峰叆鍙ｏ細鐐瑰嚮鍚庢墦寮€ AI Companion 椤甸潰銆?// 杩欓噷鍙仛鍓嶇瀵艰埅锛涘綋鍓?AI 椤甸潰鏄潤鎬侀〉闈紝涓嶄細璋冪敤澶栭儴 AI 鎴栧悗绔€?
+// 这里只做前端导航，不直接调用外部 AI 或后端。
 // Initial render after data.js has populated window.appData.
-// data.js 鎶?window.appData 鍑嗗濂戒箣鍚庯紝鎵ц绗竴娆￠〉闈㈡覆鏌撱€?render();
+// data.js 准备好 window.appData 后进行初始数据加载。
+// The first render call is left inactive in this comment-only pass.
+// 当前保持旧的首次 render 调用不启用。
 loadDatabaseActivities();
 loadNewsFeed();
