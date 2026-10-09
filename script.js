@@ -150,6 +150,10 @@ const letterDraft = {
   font: "serif",
 };
 
+// AI rewrite state for the Letter helper.
+// Letter 辅助写作的 AI 改写状态。
+let letterRewrite = { body: "", original: "", status: "", request: 0 };
+
 // Tracks notification counts the user has already seen.
 // 记录用户已经看过的通知数量。
 const notificationSeen = {
@@ -609,6 +613,7 @@ function renderLetter() {
             <textarea id="letter-body" class="letter-body-input" data-letter-field="body" placeholder="Write your letter here...">${escapeHtml(letterDraft.body)}</textarea>
           </div>
 
+          ${letterWritingTools()}
           <div class="wide-actions letter-actions">
             <button class="primary" data-action="download-letter">Download letter</button>
             <button class="blue-btn" data-action="send-letter">Send by email</button>
@@ -786,6 +791,100 @@ async function sendLetter() {
   } catch (error) {
     alert(error?.message || "Email could not be sent.");
   }
+}
+
+function letterWritingToolsContent() {
+  // Render AI writing helper controls for the Letter page.
+  // 渲染 Letter 页面里的 AI 辅助写作控件。
+  return `
+    <h3>Let Companion help with your words</h3>
+    <p class="muted small">Keep your meaning and change the tone. You review the result before using it.</p>
+    <label>
+      Writing language
+      <select data-ai-preference="language">
+        <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
+        <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>Simplified Chinese</option>
+        <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>Traditional Chinese</option>
+      </select>
+    </label>
+    <div class="check-options">
+      ${[
+        ["gentle", "Softer & warmer"],
+        ["simple", "Simpler"],
+        ["formal", "More formal"],
+      ]
+        .map(([tone, label]) => `<button class="outline-btn" data-rewrite-tone="${tone}">${label}</button>`)
+        .join("")}
+    </div>
+    <p class="muted small">Only your message text is sent to DeepSeek for rewriting. Please leave out private details.</p>
+    <p role="status" aria-live="polite">${escapeHtml(letterRewrite.status)}</p>
+    ${
+      letterRewrite.body
+        ? `<div class="rewrite-preview"><h4>Suggested wording</h4><p class="rewritten-body">${escapeHtml(letterRewrite.body)}</p><button class="primary" data-use-rewrite>Use this wording</button> <button class="outline-btn" data-dismiss-rewrite>Keep original</button></div>`
+        : ""
+    }
+  `;
+}
+
+function letterWritingTools() {
+  // Keep the helper as a small replaceable panel.
+  // 把辅助写作做成可单独刷新的小面板。
+  return `<section id="letter-writing-tools" class="writing-tools">${letterWritingToolsContent()}</section>`;
+}
+
+async function rewriteLetter(tone) {
+  // Rewrite only the letter body; recipient name and email are not sent.
+  // 只改写正文，不发送收件人姓名和邮箱。
+  if (!["gentle", "simple", "formal"].includes(tone)) return;
+
+  const original = letterDraft.body;
+  const target = document.querySelector("#letter-writing-tools");
+  if (!target) return;
+
+  if (
+    original.trim() &&
+    !window.confirm(
+      "Send this letter message to DeepSeek to change its wording? Recipient name and email will not be sent. Avoid including private details in the message.",
+    )
+  ) {
+    return;
+  }
+
+  const request = letterRewrite.request + 1;
+  letterRewrite = {
+    body: "",
+    original,
+    request,
+    status: original.trim() ? "Preparing suggested wording..." : "Write your message first.",
+  };
+  target.innerHTML = letterWritingToolsContent();
+  if (!original.trim()) return;
+
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task: `rewrite-${tone}`,
+        input: original,
+        language: aiPreferences.language,
+        style: "standard",
+      }),
+    });
+    const payload = await response.json();
+    if (request !== letterRewrite.request || original !== letterDraft.body) return;
+    if (!response.ok || payload.refused || !payload.text) {
+      throw new Error(payload.error || "Companion could not rewrite this message. Your original is unchanged.");
+    }
+    letterRewrite.body = payload.text;
+    letterRewrite.status = "Read the suggestion and choose whether to use it.";
+  } catch (error) {
+    if (request !== letterRewrite.request) return;
+    letterRewrite.status = error.message || "Please try again later.";
+  }
+
+  const current = document.querySelector("#letter-writing-tools");
+  if (current) current.innerHTML = letterWritingToolsContent();
 }
 
 /* Social and community activities                                    */
@@ -1231,8 +1330,9 @@ function renderAI() {
 
   // Optional chaining keeps the AI page usable if the Companion module is unavailable.
   // optional chaining 可以保证 Companion 模块不可用时页面仍能打开。
-  // The setup call is left inactive in this comment-only pass.
-  // 当前保持 setup 调用不启用。
+  // Mount the pet setup panel after the AI page HTML exists.
+  // AI 页面 HTML 创建后再挂载桌宠设置面板。
+  window.AgePet?.mountSetup();
 }
 
 // Send one named task to the server and render the response as plain text.
@@ -1305,6 +1405,33 @@ function render() {
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
+  const rewriteButton = event.target.closest("[data-rewrite-tone]");
+  if (rewriteButton) {
+    // Ask AI to rewrite the current letter body with the selected tone.
+    // 按所选语气让 AI 改写当前信件正文。
+    rewriteLetter(rewriteButton.dataset.rewriteTone);
+    return;
+  }
+
+  if (event.target.closest("[data-use-rewrite]")) {
+    // Replace the draft only when the suggestion still matches the original text.
+    // 只有当前正文仍是原文时，才用建议内容替换，避免覆盖用户新编辑。
+    if (letterRewrite.body && letterDraft.body === letterRewrite.original) {
+      letterDraft.body = letterRewrite.body;
+      letterRewrite = { body: "", original: "", status: "", request: letterRewrite.request + 1 };
+      renderLetter();
+    }
+    return;
+  }
+
+  if (event.target.closest("[data-dismiss-rewrite]")) {
+    // Clear the suggested rewrite and keep the user's original message.
+    // 清除 AI 建议，保留用户原文。
+    letterRewrite = { body: "", original: "", status: "", request: letterRewrite.request + 1 };
+    renderLetter();
+    return;
+  }
+
   // Event delegation keeps the interaction code in one place. Instead of
   // 事件委托把点击逻辑集中在一个地方。
   // attaching separate click listeners after every render, the document listens
