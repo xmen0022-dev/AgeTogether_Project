@@ -107,6 +107,8 @@ const SUPPORTED_PET_LANGUAGES = new Set(Object.keys(HEALTH_TIPS));
 // Each upload receives a token. Only the newest token may update the Pet,
 // which prevents a slower, older image-processing job from winning a race.
 function createLatestTaskGuard() {
+  // Tokens represent permission to update the UI, not cancellation of the work.
+  // An older cutout may finish, but its isCurrent() check prevents stale writes.
   let latestId = 0;
   return {
     begin() {
@@ -120,11 +122,15 @@ const photoTasks = createLatestTaskGuard();
 
 // Keep Pet-owned timers together so a closing page can release them in one step.
 function createPetTimerManager(timerApi = globalThis) {
+  // Track one-shot and repeating timers separately. The optional timer API lets
+  // tests verify cleanup without waiting for real browser timers to elapse.
   const timeouts = new Set();
   const intervals = new Set();
 
   return {
     after(callback, delay) {
+      // Remove a one-shot ID before calling the callback; recursive scheduling
+      // then tracks only live timers rather than accumulating completed IDs.
       let id;
       id = timerApi.setTimeout(() => {
         timeouts.delete(id);
@@ -147,6 +153,7 @@ function createPetTimerManager(timerApi = globalThis) {
       timerApi.clearInterval(id);
     },
     stop() {
+      // Clear both browser timers and our references when the page truly closes.
       timeouts.forEach((id) => timerApi.clearTimeout(id));
       intervals.forEach((id) => timerApi.clearInterval(id));
       timeouts.clear();
@@ -1151,6 +1158,8 @@ async function onPhotoChosen(event) {
   event.target.value = ""; // let the same file be chosen again later
   if (!file) return;
   const photoTask = photoTasks.begin();
+  // Recheck this token after each asynchronous stage before applying or saving
+  // the result. The most recently selected photo is the only permitted winner.
 
   try {
     // De-duplicate before doing any work: cutting out is the slow step, and on

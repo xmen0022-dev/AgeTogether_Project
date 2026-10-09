@@ -10,6 +10,8 @@
     TC: { title: '你的夥伴', hello: '我在這裡。你想聊些什麼？', input: '和夥伴聊聊', send: '傳送', close: '關閉聊天', thinking: '正在想一想…', error: '暫時無法連線，請重試。', privacy: '訊息會傳送給 AI，請不要填寫私人資訊。', empty: '暫時沒有收到回答，請重試。' },
   };
   let panel, title, closeButton, messages, status, form, input, send, privacy;
+  // `opened` controls visibility; `compact` hides the composer but keeps the reply.
+  // `pending` is shared by both composers so only one AI request runs at a time.
   let opened = false;
   let pending = false;
   let compact = false;
@@ -19,6 +21,8 @@
   // 两个入口共享本次对话，刷新后清空，不写入本地存储。
   // linshi duihua jilu：只存内存，刷新清空，不是数据库保存。
   const transcript = [];
+  // This array is a display history only. It is neither persisted nor included
+  // in the API payload as model context, so refresh clears the conversation.
   let historyMessages, historyStatus, historySend, historyTitle, historyInput, historyPrivacy;
   let feedback = '';
   const languageCopy = () => copy[window.aiPreferences?.language] || copy['en-AU'];
@@ -32,10 +36,14 @@
     const photoRect = pet.querySelector('.pet-photo')?.getBoundingClientRect();
     const top = Math.min(buttonRect.top, photoRect?.top ?? buttonRect.top);
     const right = Math.max(buttonRect.right, photoRect?.right ?? buttonRect.right);
+    // Viewport coordinates become fixed-position offsets. Reserve 36 pixels
+    // above the image for the balloon tail and the Pet's small movements.
     panel.style.bottom = `${Math.max(12, window.innerHeight - top + 36)}px`;
     panel.style.right = `${Math.max(12, window.innerWidth - right)}px`;
     panel.style.left = 'auto';
     panel.style.maxHeight = `${Math.max(60, top - 48)}px`;
+    // Bound the readable reply area to 320 pixels and available space above
+    // the Pet; an expanded composer reserves an additional 90 pixels.
     replyText.style.maxHeight = `${Math.max(44, Math.min(320, top - 80 - (compact ? 0 : 90)))}px`;
   }
 
@@ -50,13 +58,17 @@
   // Share the conversation between both views. / liang ge jiemian gongxiang duihua
   // jilu bing tongbu xiaoxi：加入临时记录，同步到 Pet 和 AI 页面。
   function appendMessage(text, kind) {
+    // Store once, then update any mounted views. An absent AI-page history
+    // will receive these messages later when mountHistory() replays the array.
     transcript.push({ text, kind });
     renderMessage(messages, text, kind);
     if (historyMessages) renderMessage(historyMessages, text, kind);
   }
 
-  // xianshi xiaoxi：只负责显示，不负责保存到数据库或本地存储。
+  // xianshi
   function renderMessage(host, text, kind) {
+    // `kind` chooses the visual style (user, companion, reminder or tip).
+    // This function creates DOM only; it does not write to storage.
     const row = element('p', '', `pet-chat-message is-${kind}`);
     // Model output is always plain text, never HTML. / AI 输出仅作为文本展示。
     row.textContent = text;
@@ -64,8 +76,10 @@
     host.scrollTop = host.scrollHeight;
   }
 
-  // chuangjian liaotian kuang：第一次使用时创建，之后复用。
+  // chuangjian liaotian kuang
   function ensurePanel() {
+    // Build and bind the floating panel once, rather than attaching duplicate
+    // handlers every time the user opens it. Leave it hidden until open().
     if (panel) return;
     panel = element('section', 'pet-chat', 'pet-chat');
     panel.hidden = true;
@@ -95,6 +109,8 @@
     privacy = element('p', 'pet-chat-privacy', 'pet-chat-privacy');
     peek = element('button', 'pet-chat-peek', 'pet-chat-peek');
     peek.type = 'button';
+    // The outer button owns the comic outline and clickable reopening action.
+    // The inner span scrolls long replies without clipping the balloon tail.
     replyText = element('span', 'pet-chat-reply', 'pet-chat-reply');
     peek.append(replyText);
     peek.setAttribute('aria-live', 'polite');
@@ -106,6 +122,8 @@
 
   // gengxin yuyan：让两个聊天入口的界面文字跟随语言设置。
   function refreshLanguage() {
+    // Translate controls without replacing the composers or clearing drafts.
+    // Existing messages keep the language in which they were originally sent.
     if (!panel) return;
     const words = languageCopy();
     title.textContent = words.title;
@@ -130,6 +148,8 @@
 
   // gengxin zhuangtai he huifu：显示等待、错误或完整回复。
   function syncStatus() {
+    // A pending/error status temporarily takes precedence over the latest
+    // non-user message. Both views share the same disabled-send state.
     const text = pending ? languageCopy().thinking : feedback ? languageCopy().error : '';
     status.textContent = text;
     send.disabled = pending;
@@ -148,6 +168,8 @@
   // Display the shared conversation history. / xianshi gongxiang de duihua jilu
   // gongxiang duihua jilu：在 AI Companion 页面显示同一份临时记录。
   function mountHistory(host) {
+    // The router supplies a fresh container after rendering the AI page.
+    // Rebuild that view from the shared transcript, not from the Pet's HTML.
     if (!host) return;
     ensurePanel();
     const words = languageCopy();
@@ -162,6 +184,8 @@
     const historyForm = element('form', 'companion-history-form', 'pet-chat-form');
     historyInput = element('textarea', 'companion-history-input');
     const composer = historyInput;
+    // Capture this particular textarea so an old asynchronous submit handler
+    // cannot accidentally restore a question into a newly mounted composer.
     historyInput.rows = 2;
     historyInput.maxLength = 2000;
     historyInput.placeholder = words.input;
@@ -176,6 +200,7 @@
       if (pending || !question) return;
       composer.value = '';
       const answered = await sendQuestion(question);
+      // Restore a failed question only if the user has not typed a new draft.
       if (!answered && !composer.value) composer.value = question;
     });
     historyPrivacy = element('p', 'companion-history-privacy', 'pet-chat-privacy');
@@ -185,6 +210,7 @@
 
   // dakai shuru kuang：展开输入区并让光标进入输入框，不自动请求 AI。
   function open() {
+    // Opening is a local UI action only: it never sends text to the AI provider.
     ensurePanel();
     refreshLanguage();
     opened = true;
@@ -199,6 +225,8 @@
 
   // guanbi liaotian kuang：隐藏气泡和输入区，保留本次临时记录。
   function close() {
+    // Hide the UI without cancelling a pending request or clearing its record.
+    // Returning focus to Pet keeps keyboard navigation predictable.
     if (!panel) return;
     opened = false;
     panel.hidden = true;
@@ -209,6 +237,8 @@
 
   // fasong bing shouqi shuru：提交问题后收起输入区，只留回复气泡。
   async function submit(event) {
+    // Reject duplicate, blank and oversized questions before changing the UI.
+    // The compact class hides the form through CSS while the answer is awaited.
     event.preventDefault();
     const question = input.value.trim();
     if (pending || !question || question.length > 2000) return;
@@ -226,8 +256,9 @@
     }
   }
 
-  // qingqiu AI huifu：两个入口共用请求逻辑，防止重复发送。
   async function sendQuestion(value, task = 'ask') {
+    // Common request path for the Pet composer and AI-page shortcuts/history.
+    // Return a boolean so callers can restore their own draft on failure.
     const question = String(value || '').trim();
     if (pending || !question || question.length > 2000) return false;
     ensurePanel();
@@ -236,18 +267,22 @@
     syncStatus();
     appendMessage(question, 'user');
     const controller = new AbortController();
-    // chaoshi quxiao：45 秒没完成就取消请求。
+    // chaoshi quxiao
     const timeout = setTimeout(() => controller.abort(), 45000);
     try {
       // Reuse server safety rules and the selected output language/style.
       // 复用服务端安全规则，以及用户选定的语言和表达风格。
       // qingqiu ziji de fuwuqi：前端请求本站接口，后端再调用 DeepSeek。
       const response = await fetch('/api/ask', {
+        // This calls our backend, not DeepSeek directly. The API key stays on
+        // the server; only the current question, task and preferences are sent.
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({ task, input: question, ...window.aiPreferences }),
       });
       const payload = await response.json();
+      // Treat failed HTTP responses and missing/blank text as retryable errors.
+      // Never add malformed responses to the shared conversation transcript.
       if (!response.ok || typeof payload.text !== 'string' || !payload.text.trim()) throw new Error('No answer');
       appendMessage(payload.text.trim(), 'companion');
       return true;
@@ -255,6 +290,7 @@
       feedback = 'error';
       return false;
     } finally {
+      // Release the timeout and pending lock on success, error or cancellation.
       clearTimeout(timeout);
       pending = false;
       syncStatus();
@@ -263,6 +299,8 @@
 
   // jiaru tixing：聊天打开时，把提醒或小贴士加入同一份记录。
   function notice(message, kind = 'companion') {
+    // pet.js routes notices here only while chat is visible. Keeping them in
+    // the same transcript avoids a second overlapping notification balloon.
     if (!opened || !message) return;
     appendMessage(message, kind);
     syncStatus();

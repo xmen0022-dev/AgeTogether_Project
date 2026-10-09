@@ -833,10 +833,12 @@ function letterWritingTools() {
 }
 
 async function rewriteLetter(tone) {
+  // Allow only supported task suffixes and snapshot the draft before the request.
+  // Recipient fields are excluded, but private details typed into the body itself
+  // would still be sent, which is why the confirmation asks users to omit them.
   // Rewrite only the letter body; recipient name and email are not sent.
   // 只改写正文，不发送收件人姓名和邮箱。
   if (!["gentle", "simple", "formal"].includes(tone)) return;
-
   const original = letterDraft.body;
   const target = document.querySelector("#letter-writing-tools");
   if (!target) return;
@@ -851,6 +853,8 @@ async function rewriteLetter(tone) {
   }
 
   const request = letterRewrite.request + 1;
+  // The sequence number invalidates older responses when another rewrite starts,
+  // the draft changes, or the user discards/accepts a previous suggestion.
   letterRewrite = {
     body: "",
     original,
@@ -873,6 +877,8 @@ async function rewriteLetter(tone) {
     });
     const payload = await response.json();
     if (request !== letterRewrite.request || original !== letterDraft.body) return;
+    // Keep the original untouched on provider errors, refusals or missing output.
+    // A valid response becomes a preview, not an automatic replacement.
     if (!response.ok || payload.refused || !payload.text) {
       throw new Error(payload.error || "Companion could not rewrite this message. Your original is unchanged.");
     }
@@ -1414,6 +1420,8 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-use-rewrite]")) {
+    // Apply only a suggestion made for the still-current draft. This prevents
+    // a stale preview from replacing edits made after the AI request began.
     // Replace the draft only when the suggestion still matches the original text.
     // 只有当前正文仍是原文时，才用建议内容替换，避免覆盖用户新编辑。
     if (letterRewrite.body && letterDraft.body === letterRewrite.original) {
@@ -1425,6 +1433,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-dismiss-rewrite]")) {
+    // Discard the preview and invalidate pending responses without changing text.
     // Clear the suggested rewrite and keep the user's original message.
     // 清除 AI 建议，保留用户原文。
     letterRewrite = { body: "", original: "", status: "", request: letterRewrite.request + 1 };
