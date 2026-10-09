@@ -1736,7 +1736,8 @@ function handleAction(action) {
 // 这里只做前端导航，不直接调用外部 AI 或后端。
 // Initial render after data.js has populated window.appData.
 // data.js 准备好 window.appData 后进行初始数据加载。
-// The first render call is left inactive in this comment-only pass.
-// 当前保持旧的首次 render 调用不启用。
+// Render the first visible page before background data refreshes finish.
+// 后台数据刷新完成前，先渲染首屏页面，避免打开时空白。
+render();
 loadDatabaseActivities();
 loadNewsFeed();
