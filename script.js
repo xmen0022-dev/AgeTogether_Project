@@ -1,4 +1,4 @@
-﻿const app = document.querySelector("#app");
+const app = document.querySelector("#app");
 // The app constant above points to the main page container.
 // 上面的 app 常量指向主页面容器。
 // Floating pet button shown on selected pages.
@@ -123,6 +123,10 @@ const staticNewsItems = JSON.parse(JSON.stringify(state.newsItems || []));
 let newsSource = "static";
 let newsLoading = false;
 let newsError = "";
+
+// How many days of news to show, counted back from the newest article. 0 = all.
+// 新闻显示最近几天（以最新一篇为基准），0 表示全部。
+let newsWindowDays = 3;
 
 // Defaults to Melbourne CBD until the user opts in to sharing their real
 // location. Nothing is requested automatically - see the "Use my location"
@@ -1078,9 +1082,22 @@ function initActivityMap(activities) {
   }
 }
 
+function recentNewsItems() {
+  // Newest first. The window is measured from the newest article, not from today,
+  // because the news data is a snapshot. Items without a date are never hidden.
+  // 按时间倒序；窗口以最新文章为基准，因为新闻是快照。没有日期的条目不会被隐藏。
+  const dated = state.newsItems.map((n) => ({ n, t: Date.parse(n.publishedDate) }));
+  const valid = dated.filter((x) => Number.isFinite(x.t)).sort((a, b) => b.t - a.t);
+  const undated = dated.filter((x) => !Number.isFinite(x.t)).map((x) => x.n);
+  if (!newsWindowDays || !valid.length) return [...valid.map((x) => x.n), ...undated];
+  const cutoff = valid[0].t - newsWindowDays * 24 * 60 * 60 * 1000;
+  return valid.filter((x) => x.t >= cutoff).map((x) => x.n);
+}
+
 function renderNews() {
-  // News cards are generated from `state.newsItems`.
-  // 新闻卡片来自 state.newsItems。
+  // News cards are generated from `state.newsItems`, limited to the chosen window.
+  // 新闻卡片来自 state.newsItems，并按所选时间范围筛选。
+  const items = recentNewsItems();
   return `
     <h2>Useful news & information</h2>
     <p class="muted section-copy">
@@ -1092,8 +1109,18 @@ function renderNews() {
     </p>
     ${newsLoading ? `<p class="info-note">Loading the latest news snapshot...</p>` : ""}
     ${newsError ? `<p class="info-note warning-note">${newsError}</p>` : ""}
+    ${
+      newsSource === "feed"
+        ? `<div class="chips filter-row">
+            ${[[3, "Last 3 days"], [7, "Last 7 days"], [0, "All"]]
+              .map(([days, label]) => `<button class="pill ${newsWindowDays === days ? "active" : ""}" data-news-window="${days}">${label}</button>`)
+              .join("")}
+          </div>
+          <p class="muted small">Showing ${items.length} of ${state.newsItems.length} articles, newest first.</p>`
+        : ""
+    }
     <section class="social-grid">
-      ${state.newsItems.map((n) => news(n)).join("")}
+      ${items.map((n) => news(n)).join("")}
     </section>
   `;
 }
@@ -1110,7 +1137,7 @@ function news(n) {
       <div class="card-top">
         <span class="activity-icon">${n.icon}</span>
         <span class="small-badge blue-badge">${escapeHtml(n.tag)}</span>
-        <button class="save-btn ${n.saved ? "saved" : ""}" data-save-news="${n.id}">&#x1F516; ${n.saved ? "Saved" : "Save"}</button>
+        <button class="save-btn ${n.saved ? "saved" : ""}" data-save-news="${escapeHtml(n.id)}">&#x1F516; ${n.saved ? "Saved" : "Save"}</button>
       </div>
       <h3>${escapeHtml(n.title)}</h3>
       <p>${escapeHtml(n.copy)}</p>
@@ -1307,7 +1334,7 @@ function renderAI() {
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
                 <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>绠€浣撲腑鏂?/option>
-                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
               </select>
             </div>
             <div class="field">
@@ -1552,6 +1579,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // Change how many recent days of news are shown (3, 7, or 0 for all).
+  // 切换新闻显示的时间范围（3 天、7 天或全部）。
+  const newsWindowTarget = event.target.closest("[data-news-window]");
+  if (newsWindowTarget) {
+    newsWindowDays = Number(newsWindowTarget.dataset.newsWindow);
+    renderSocial();
+    return;
+  }
+
   // Save/unsave a community activity. Backend mapping:
   // 保存或取消保存一个社区活动。
   // POST /saved-items with { type: "activity", id } or
@@ -1577,10 +1613,12 @@ document.addEventListener("click", (event) => {
   // 取消保存可对应 DELETE /saved-items/news/:id。
   // This prototype keeps the saved news state locally in the browser.
   // 当前原型只在浏览器状态中保存。
+  // News ids are strings (news-<article url>), so compare as strings.
+  // 新闻 id 是字符串（news-文章链接），所以按字符串比较。
   const saveNews = event.target.closest("[data-save-news]");
   if (saveNews) {
-    const id = Number(saveNews.dataset.saveNews);
-    const newsItem = state.newsItems.find((n) => n.id === id);
+    const id = saveNews.dataset.saveNews;
+    const newsItem = state.newsItems.find((n) => String(n.id) === id);
     if (newsItem) newsItem.saved = !newsItem.saved;
     renderSocial();
     return;
