@@ -66,6 +66,7 @@ const state = JSON.parse(JSON.stringify(appData.state || {}));
 // it survives a refresh but stays private to this browser.
 // 个人资料保存到本机浏览器，不依赖账号或服务器。
 const PROFILE_STORAGE_KEY = "agetogether:profile";
+const TEXT_SIZE_STORAGE_KEY = "agetogether:text-size";
 
 // Message shown if local profile saving fails.
 // 本地保存失败时显示的提示信息。
@@ -100,9 +101,27 @@ function saveProfileLocally() {
   }
 }
 
+function readSavedTextSizeLevel() {
+  try {
+    const savedLevel = Number(localStorage.getItem(TEXT_SIZE_STORAGE_KEY));
+    return savedLevel >= 1 && savedLevel <= 5 ? savedLevel : 3;
+  } catch (error) {
+    return 3;
+  }
+}
+
+function saveTextSizeLevel() {
+  try {
+    localStorage.setItem(TEXT_SIZE_STORAGE_KEY, String(textSizeLevel));
+  } catch (error) {
+    console.warn("[profile] couldn't save text size:", error?.message ?? error);
+  }
+}
+
 // Apply any saved profile before the first render/data load.
 // 首次渲染前先加载本地保存的个人资料。
 loadSavedProfile();
+textSizeLevel = readSavedTextSizeLevel();
 
 // Static activities are kept as a fallback when the database API fails.
 // 静态活动数据用于数据库接口失败时兜底。
@@ -214,6 +233,7 @@ function applyTextSize() {
   // 具体字号在 styles.css 中定义。
   // This keeps most page text in sync with the selected accessibility size.
   // 这样页面大部分文字会跟随无障碍字号变化。
+  document.body.classList.remove("text-size-1", "text-size-2", "text-size-3", "text-size-4", "text-size-5");
   document.body.classList.add(`text-size-${textSizeLevel}`);
 }
 
@@ -1794,6 +1814,8 @@ document.addEventListener("click", (event) => {
     // 更改后重新渲染 Profile 控件。
     // controls so the active button reflects the current size.
     // 这样当前选中的字号按钮能显示正确状态。
+    textSizeLevel = Number(textSizeTarget.dataset.textSize);
+    saveTextSizeLevel();
     applyTextSize();
     renderProfile();
     return;

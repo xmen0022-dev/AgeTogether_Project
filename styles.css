@@ -40,7 +40,7 @@ body {
    JavaScript 浼氱粰 <body> 鍔犱笂鍏朵腑涓€涓?class銆傜敱浜庡ぇ閮ㄥ垎缁勪欢浣跨敤
    rem/em/inherit 瀛楀彿锛屾敼鍙?body 鐨?font-size 灏辫兘璁╂暣浣撶晫闈竴璧锋斁澶ф垨缂╁皬锛?   涓嶉渶瑕佺粰姣忎釜鏂囧瓧鍏冪礌鍗曠嫭鍐欒鍒欍€?*/
 body.text-size-1 {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 body.text-size-2 {
@@ -48,15 +48,15 @@ body.text-size-2 {
 }
 
 body.text-size-3 {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 body.text-size-4 {
-  font-size: 18px;
+  font-size: 21px;
 }
 
 body.text-size-5 {
-  font-size: 20px;
+  font-size: 25px;
 }
 
 button,
@@ -1653,6 +1653,26 @@ textarea {
   background: white;
   font-weight: 850;
   cursor: pointer;
+}
+
+.text-size-btn[data-text-size="1"] {
+  font-size: 0.82rem;
+}
+
+.text-size-btn[data-text-size="2"] {
+  font-size: 0.95rem;
+}
+
+.text-size-btn[data-text-size="3"] {
+  font-size: 1.1rem;
+}
+
+.text-size-btn[data-text-size="4"] {
+  font-size: 1.32rem;
+}
+
+.text-size-btn[data-text-size="5"] {
+  font-size: 1.58rem;
 }
 
 .text-size-btn.active {
