@@ -11,7 +11,7 @@ const nav = [...document.querySelectorAll(".top-nav button")];
 
 // Current page route.
 // 当前所在页面。
-let route = "home";
+let route = "intro";
 
 // Current Social tab.
 // Social 页面当前选中的标签页。
@@ -39,7 +39,7 @@ let textSizeLevel = 3;
 
 // Allowed route names.
 // 允许访问的页面名称。
-const validRoutes = new Set(["home", "letter", "social", "profile", "ai"]);
+const validRoutes = new Set(["intro", "home", "letter", "social", "profile", "ai"]);
 
 // Pages where the floating pet should be visible.
 // 需要显示桌宠入口的页面。
@@ -456,6 +456,124 @@ async function useMyLocation() {
     },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Intro                                                              */
+/* ------------------------------------------------------------------ */
+
+function renderIntro() {
+  app.innerHTML = `
+    <section class="intro-page">
+      <section class="intro-hero">
+        <div class="intro-copy">
+          <div class="intro-eyebrow-row">
+            <span>Healthy ageing prototype</span>
+            <span>Melbourne community support</span>
+          </div>
+          <h1>AgeTogether Australia</h1>
+          <p class="intro-lead">
+            A calm digital companion for older Australians who want to stay connected, write meaningful letters, and explore local community opportunities without learning a complex new platform.
+          </p>
+          <div class="intro-story">
+            <strong>Design background</strong>
+            <p>
+              The experience is built around low digital confidence, privacy concerns, and the need for readable, low-pressure interactions. Each section keeps decisions small, visible, and reversible.
+            </p>
+          </div>
+          <div class="intro-badges" aria-label="Core design principles">
+            <span>Readable</span>
+            <span>Step-by-step</span>
+            <span>Privacy aware</span>
+            <span>Local discovery</span>
+          </div>
+        </div>
+
+        <div class="intro-product-board" aria-label="Prototype preview">
+          <div class="intro-large-image">
+            <img src="https://images.unsplash.com/photo-1764173040319-4db683637611?auto=format&fit=crop&w=1200&q=80" alt="Two older adults smiling together in a park" />
+            <div class="intro-floating-note">
+              <strong>Designed for confidence</strong>
+              <span>Large text, clear actions, and gentle guidance.</span>
+            </div>
+          </div>
+          <div class="intro-device" aria-label="Letter preview mockup">
+            <div class="intro-device-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="intro-message-card">
+              <small>Letter preview</small>
+              <p>Dear Margaret,</p>
+              <p>I wanted to send a warm note and let you know I am thinking of you today.</p>
+              <p>From, AgeTogether</p>
+            </div>
+            <div class="intro-mini-row">
+              <span>Paper</span>
+              <span>Tone</span>
+              <span>Email</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="intro-showcase" aria-label="Feature overview">
+        <article class="intro-card intro-card-letter">
+          <span class="intro-icon">&#x2709;</span>
+          <h2>Letter</h2>
+          <p>Write a message, preview it as a styled letter, adjust paper, colour, and font, then download or send it by email.</p>
+          <ul>
+            <li>Live letter preview</li>
+            <li>Download with selected style</li>
+            <li>Email delivery through the backend</li>
+          </ul>
+        </article>
+        <article class="intro-card intro-card-social">
+          <span class="intro-icon">&#x1F5FA;</span>
+          <h2>Social</h2>
+          <p>Find nearby community places and switch between list and map views with simple labels and visible source notes.</p>
+          <ul>
+            <li>Nearby places</li>
+            <li>Map and list views</li>
+            <li>Saved interests</li>
+          </ul>
+        </article>
+        <article class="intro-card intro-card-ai">
+          <span class="intro-icon">&#x1F43E;</span>
+          <h2>AI Companion</h2>
+          <p>Provide lightweight practical support, gentle reminders, and optional writing help while keeping the core app usable without AI.</p>
+          <ul>
+            <li>Daily suggestions</li>
+            <li>Safety tips</li>
+            <li>Writing support</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="intro-flow" aria-label="Design background">
+        <div>
+          <span class="intro-kicker">Design background</span>
+          <h2>From a private thought to a finished action.</h2>
+          <p>
+            The prototype avoids forcing users through account setup first. Instead, it lets them understand the service, try a simple task, and only share information when a task needs it.
+          </p>
+        </div>
+        <div class="intro-flow-steps">
+          <span>Understand</span>
+          <span>Choose</span>
+          <span>Write</span>
+          <span>Preview</span>
+          <span>Send</span>
+        </div>
+      </section>
+
+      <button class="intro-start" data-route="home" type="button">
+        <span>Start</span>
+        <span class="intro-start-arrow" aria-hidden="true">&#8594;</span>
+      </button>
+    </section>
+  `;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1417,7 +1535,7 @@ async function askCompanion(task, input) {
 function render() {
   // Rebuild the visible UI from the current route and state.
   // 根据当前路由和状态重建可见界面。
-  if (!validRoutes.has(route)) route = "letter";
+  if (!validRoutes.has(route)) route = "intro";
   nav.forEach((button) => {
     // Highlight the active navigation button.
     // 高亮当前页面对应的导航按钮。
@@ -1425,7 +1543,9 @@ function render() {
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
+  document.body.classList.toggle("intro-active", route === "intro");
 
+  if (route === "intro") renderIntro();
   if (route === "home") renderHome();
   if (route === "letter") renderLetter();
   if (route === "social") renderSocial();
