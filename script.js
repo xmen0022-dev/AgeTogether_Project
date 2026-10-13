@@ -71,6 +71,7 @@ const TEXT_SIZE_STORAGE_KEY = "agetogether:text-size";
 // Message shown if local profile saving fails.
 // 本地保存失败时显示的提示信息。
 let profileSaveError = "";
+let profileValidationErrors = {};
 
 function loadSavedProfile() {
   // Load saved profile data from this browser.
@@ -1503,7 +1504,7 @@ function renderProfile() {
           ${profileField("email", "Email address", p.email)}
           ${profileField("suburb", "Suburb", p.suburb)}
           ${profileField("emergency", "Emergency contact", p.emergencyContact)}
-          <div class="field"><label>Accessibility needs</label><small>Optional. Helps activity organisers support you.</small><textarea id="profile-accessibility">${p.accessibility}</textarea></div>
+          <div class="field ${profileValidationErrors.accessibility ? "invalid" : ""}"><label>Accessibility needs</label><small>Optional. Helps activity organisers support you.</small><textarea id="profile-accessibility" aria-invalid="${profileValidationErrors.accessibility ? "true" : "false"}">${escapeHtml(p.accessibility)}</textarea>${profileError("accessibility")}</div>
         </div>
         <p>
           <button class="primary" data-action="save-profile">Save Changes</button>
@@ -1527,7 +1528,67 @@ function renderProfile() {
 function profileField(id, label, value) {
   // Reusable input field. The id naming is used later when saving profile data.
   // 通用输入框，id 命名会在保存个人资料时再次使用。
-  return `<div class="field"><label>${escapeHtml(label)}</label><input id="profile-${id}" value="${escapeHtml(value)}" /></div>`;
+  const error = profileValidationErrors[id];
+  return `<div class="field ${error ? "invalid" : ""}"><label>${escapeHtml(label)}</label><input id="profile-${id}" value="${escapeHtml(value)}" aria-invalid="${error ? "true" : "false"}" />${profileError(id)}</div>`;
+}
+
+function profileError(id) {
+  const message = profileValidationErrors[id];
+  return message ? `<p class="field-error">${escapeHtml(message)}</p>` : "";
+}
+
+function cleanProfileValue(selector, fallback = "") {
+  return (document.querySelector(selector)?.value ?? fallback).trim();
+}
+
+function isValidName(value) {
+  return /^[A-Za-z][A-Za-z\s'-]{1,59}$/.test(value);
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
+function normalisedPhoneDigits(value) {
+  return value.replace(/[^\d]/g, "");
+}
+
+function isValidAustralianPhone(value) {
+  const digits = normalisedPhoneDigits(value);
+  return (digits.startsWith("04") && digits.length === 10) || (digits.startsWith("614") && digits.length === 11);
+}
+
+function validateProfileValues(values) {
+  const errors = {};
+  if (values.fullName && !isValidName(values.fullName)) {
+    errors["full-name"] = "Use 2-60 letters. Spaces, hyphens, and apostrophes are allowed.";
+  }
+  if (values.preferredName && !isValidName(values.preferredName)) {
+    errors["preferred-name"] = "Use 2-60 letters. Spaces, hyphens, and apostrophes are allowed.";
+  }
+  if (values.age && (!/^\d{1,3}$/.test(values.age) || Number(values.age) < 1 || Number(values.age) > 120)) {
+    errors.age = "Age must be a whole number between 1 and 120.";
+  }
+  if (values.phone && !isValidAustralianPhone(values.phone)) {
+    errors.phone = "Use an Australian mobile number, for example 0412 345 678 or +61 412 345 678.";
+  }
+  if (values.email && !isValidEmail(values.email)) {
+    errors.email = "Use a valid email address, for example name@example.com.";
+  }
+  if (values.suburb && !/^[A-Za-z][A-Za-z\s,'-]{1,79}$/.test(values.suburb)) {
+    errors.suburb = "Use a suburb or area name with letters. Commas and hyphens are allowed.";
+  }
+  if (values.emergencyContact) {
+    const hasName = /[A-Za-z]{2,}/.test(values.emergencyContact);
+    const hasPhone = isValidAustralianPhone(values.emergencyContact);
+    if (!hasName || !hasPhone) {
+      errors.emergency = "Include a contact name and an Australian mobile number.";
+    }
+  }
+  if (values.accessibility.length > 240) {
+    errors.accessibility = "Keep this note under 240 characters.";
+  }
+  return errors;
 }
 
 function toggle(t) {
@@ -1987,7 +2048,19 @@ document.addEventListener("input", (event) => {
   // Letter fields update draft state immediately while typing.
   // Letter 输入框会在用户输入时立即更新草稿状态。
   const letterField = event.target.closest("[data-letter-field]");
-  if (!letterField) return;
+  if (!letterField) {
+    const profileInput = event.target.closest("#profile-full-name, #profile-preferred-name, #profile-age, #profile-phone, #profile-email, #profile-suburb, #profile-emergency, #profile-accessibility");
+    if (profileInput) {
+      const fieldKey = profileInput.id.replace("profile-", "");
+      if (profileValidationErrors[fieldKey]) {
+        delete profileValidationErrors[fieldKey];
+        profileInput.closest(".field")?.classList.remove("invalid");
+        profileInput.setAttribute("aria-invalid", "false");
+        profileInput.closest(".field")?.querySelector(".field-error")?.remove();
+      }
+    }
+    return;
+  }
   letterDraft[letterField.dataset.letterField] = letterField.value;
   updateLetterPreview();
 });
@@ -2067,14 +2140,31 @@ function handleAction(action) {
   if (action === "save-profile") {
     // Copy form values back into state.profile.
     // 把表单里的值复制回 state.profile。
-    state.profile.fullName = document.querySelector("#profile-full-name")?.value ?? state.profile.fullName;
-    state.profile.preferredName = document.querySelector("#profile-preferred-name")?.value ?? state.profile.preferredName;
-    state.profile.age = document.querySelector("#profile-age")?.value ?? state.profile.age;
-    state.profile.phone = document.querySelector("#profile-phone")?.value ?? state.profile.phone;
-    state.profile.email = document.querySelector("#profile-email")?.value ?? state.profile.email;
-    state.profile.suburb = document.querySelector("#profile-suburb")?.value ?? state.profile.suburb;
-    state.profile.emergencyContact = document.querySelector("#profile-emergency")?.value ?? state.profile.emergencyContact;
-    state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
+    const nextProfile = {
+      fullName: cleanProfileValue("#profile-full-name", state.profile.fullName),
+      preferredName: cleanProfileValue("#profile-preferred-name", state.profile.preferredName),
+      age: cleanProfileValue("#profile-age", state.profile.age),
+      phone: cleanProfileValue("#profile-phone", state.profile.phone),
+      email: cleanProfileValue("#profile-email", state.profile.email),
+      suburb: cleanProfileValue("#profile-suburb", state.profile.suburb),
+      emergencyContact: cleanProfileValue("#profile-emergency", state.profile.emergencyContact),
+      accessibility: cleanProfileValue("#profile-accessibility", state.profile.accessibility),
+    };
+    profileValidationErrors = validateProfileValues(nextProfile);
+    if (Object.keys(profileValidationErrors).length) {
+      state.profile = { ...state.profile, ...nextProfile };
+      state.profileJustSaved = false;
+      renderProfile();
+      return;
+    }
+    state.profile.fullName = nextProfile.fullName;
+    state.profile.preferredName = nextProfile.preferredName;
+    state.profile.age = nextProfile.age;
+    state.profile.phone = nextProfile.phone;
+    state.profile.email = nextProfile.email;
+    state.profile.suburb = nextProfile.suburb;
+    state.profile.emergencyContact = nextProfile.emergencyContact;
+    state.profile.accessibility = nextProfile.accessibility;
     saveProfileLocally();
     // Stored activity overrides remain authoritative; otherwise use the new profile.
     activityPreferences = loadActivityPreferences();
