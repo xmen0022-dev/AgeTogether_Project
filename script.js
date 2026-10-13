@@ -126,6 +126,16 @@ textSizeLevel = readSavedTextSizeLevel();
 // Static activities are kept as a fallback when the database API fails.
 // 静态活动数据用于数据库接口失败时兜底。
 const staticActivities = JSON.parse(JSON.stringify(state.activities || []));
+// Restore selections before any page or background refresh reads activity data.
+let activitySelections = {};
+try { activitySelections = window.ActivityCheck.readSelections(localStorage); }
+catch { /* Storage access itself can be denied; keep this session usable. */ }
+state.activities = window.ActivityCheck.restoreSelections(state.activities, activitySelections);
+let activityPreferences = loadActivityPreferences();
+let activityStorageMessage = "";
+let paperAudioContext = null;
+let letterSoundEnabled = true;
+try { letterSoundEnabled = localStorage.getItem("agetogether.letter-sound") !== "off"; } catch { /* Optional storage. */ }
 
 // Activity data source and loading state.
 // 活动数据来源和加载状态。
@@ -331,11 +341,11 @@ async function loadDatabaseActivities(lat = userLocation.lat, lng = userLocation
     const payload = await response.json();
     const places = Array.isArray(payload.places) ? payload.places : [];
     if (!places.length) throw new Error("Database API returned no places");
-    state.activities = places.map(mapDiscoveryPlace);
+    state.activities = window.ActivityCheck.restoreSelections(places.map(mapDiscoveryPlace), activitySelections);
     activitiesSource = "database";
   } catch (error) {
     console.warn("[activities] using static fallback:", error?.message ?? error);
-    state.activities = staticActivities;
+    state.activities = window.ActivityCheck.restoreSelections(staticActivities, activitySelections);
     activitiesSource = "static";
     activitiesError = "Database places are unavailable, so static sample activities are shown.";
   } finally {
@@ -760,6 +770,7 @@ function renderLetter() {
             <button class="primary" data-action="download-letter">Download letter</button>
             <button class="blue-btn" data-action="send-letter">Send by email</button>
           </div>
+          <label class="letter-sound-toggle"><input type="checkbox" data-letter-sound ${letterSoundEnabled ? "checked" : ""} /> Play a paper sound when sent</label>
         </section>
 
         <section class="panel letter-preview-panel">
@@ -888,7 +899,52 @@ function downloadLetter() {
   URL.revokeObjectURL(url);
 }
 
+function preparePaperSound() {
+  // Unlock optional audio during the user's click, before the email request.
+  if (!letterSoundEnabled) return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    paperAudioContext ||= new AudioContext();
+    if (paperAudioContext.state === 'suspended') paperAudioContext.resume().catch(() => {});
+  } catch { /* Sound is optional. */ }
+}
+
+// Filtered noise with a brief swishing envelope mimics turning a paper page.
+// 使用滤波噪声和短促起伏模拟翻纸，无需下载音频文件。
+function playPaperSound() {
+  if (!letterSoundEnabled || !paperAudioContext || paperAudioContext.state !== 'running') return;
+  try {
+    const context = paperAudioContext;
+    const duration = 0.65;
+    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, context.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(650, context.currentTime + duration);
+    filter.Q.value = 0.55;
+    const gain = context.createGain();
+    const start = context.currentTime;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.12, start + 0.08);
+    gain.gain.linearRampToValueAtTime(0.035, start + 0.24);
+    gain.gain.linearRampToValueAtTime(0.09, start + 0.36);
+    gain.gain.linearRampToValueAtTime(0, start + duration);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(context.destination);
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
+    source.start(start);
+    source.stop(start + duration);
+  } catch { /* Never turn a successful send into an error because of audio. */ }
+}
+
 async function sendLetter() {
+  preparePaperSound();
   // Send the current letter through the backend email endpoint.
   // 通过后端邮件接口发送当前信件。
   const email = letterDraft.recipientEmail.trim();
@@ -929,6 +985,7 @@ async function sendLetter() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result?.error || "Email could not be sent.");
 
+    playPaperSound();
     alert("Letter sent.");
   } catch (error) {
     alert(error?.message || "Email could not be sent.");
@@ -1058,6 +1115,86 @@ function locationCard() {
   `;
 }
 
+function rememberActivity(activity) {
+  // Save both selected flags by stable ID; storage failure does not block the UI.
+  activitySelections = window.ActivityCheck.recordSelection(activitySelections, activity);
+  try {
+    localStorage.setItem(window.ActivityCheck.SELECTION_KEY, JSON.stringify(activitySelections));
+    activityStorageMessage = '';
+  } catch { activityStorageMessage = 'Your selection works now, but this device could not save it for next time.'; }
+}
+
+function loadActivityPreferences() {
+  // Keep personal access needs local and validate stored settings on reload.
+  try {
+    const stored = JSON.parse(localStorage.getItem('agetogether.activity-preferences.v1') || 'null');
+    if (stored && Array.isArray(stored.needs) && Array.isArray(stored.interests)) return {
+      needs: stored.needs.filter((need) => Object.hasOwn(window.ActivityCheck.needLabels, need)),
+      interests: stored.interests.filter((interest) => typeof interest === 'string'),
+      maxDistance: [2, 5, 10, 20].includes(stored.maxDistance) ? stored.maxDistance : 5,
+    };
+  } catch { /* Corrupt storage uses profile-derived defaults. */ }
+  const profile = String(state.profile?.accessibility || '');
+  const needs = [];
+  if (/\b(seating|seat|seats|chair|chairs)\b/i.test(profile)) needs.push('seating');
+  if (/wheelchair/i.test(profile)) needs.push('wheelchair');
+  if (/step|stairs/i.test(profile)) needs.push('stepFree');
+  if (/hearing/i.test(profile)) needs.push('hearing');
+  if (profile.trim() && !needs.length) needs.push('other');
+  return { needs, maxDistance: 5, interests: [] };
+}
+
+function activityPreferenceMarkup() {
+  const categories = activityFilters().filter((category) => category !== 'All');
+  return `<details class="panel activity-preferences">
+    <summary>Personalise your activity checks</summary>
+    <p class="muted small">Access needs come first, then distance, then interests. Choose what matters to you.</p>
+    <fieldset><legend>Access needs</legend><div class="check-options">
+      ${Object.entries(window.ActivityCheck.needLabels).map(([key, label]) => `<label><input type="checkbox" data-activity-setting="needs" value="${key}" ${activityPreferences.needs.includes(key) ? 'checked' : ''} /> ${label}</label>`).join('')}
+    </div></fieldset>
+    <label>Preferred distance <select data-activity-setting="maxDistance">${[2, 5, 10, 20].map((km) => `<option value="${km}" ${activityPreferences.maxDistance === km ? 'selected' : ''}>Up to ${km} km</option>`).join('')}</select></label>
+    <fieldset><legend>Interests (optional)</legend><div class="check-options">
+      ${categories.map((category) => `<label><input type="checkbox" data-activity-setting="interests" value="${escapeHtml(category)}" ${activityPreferences.interests.includes(category) ? 'checked' : ''} /> ${escapeHtml(category)}</label>`).join('')}
+    </div></fieldset>
+  </details>`;
+}
+
+function activityCheckMarkup(activity) {
+  // Explain the local rule result for each saved or interested activity.
+  const check = window.ActivityCheck.analyse(activity, activityPreferences);
+  return `<section class="activity-check check-${check.level}">
+    <h4>Your activity check: ${escapeHtml(check.label)}</h4>
+    <p class="muted small">${activity.saved ? 'Saved' : ''}${activity.saved && activity.joined ? ' · ' : ''}${activity.joined ? 'Interested / selected' : ''}${activity.fromHistory ? ' · From your earlier selections' : ''}</p>
+    <ul>${check.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
+    <p>${escapeHtml(check.next)}</p>
+    <button class="outline-btn" data-activity-followup="${escapeHtml(activity.id)}">Ask Companion about this activity</button>
+    <p class="muted small">This sends the activity description, not your personal access needs, to our AI provider.</p>
+    <p class="activity-answer" role="status" aria-live="polite"></p>
+  </section>`;
+}
+
+// 在活动卡片内显示问答；页面重建后忽略旧请求。
+async function askAboutActivity(button) {
+  // Send venue data only, never the user's personal access preferences.
+  const activity = state.activities.find((item) => String(item.id) === button.dataset.activityFollowup);
+  const answer = button.closest('[data-activity-card]')?.querySelector('.activity-answer');
+  if (!activity || !answer || button.disabled) return;
+  button.disabled = true;
+  answer.textContent = 'Your companion is thinking...';
+  try {
+    const response = await fetch('/api/ask', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: 'activity-explain', ...aiPreferences, input: JSON.stringify({ title: activity.title, category: activity.category, description: activity.copy, access: activity.access, distanceKm: window.ActivityCheck.distanceOf(activity), source: activity.source || 'sample', question: 'Explain what I could do here and what to ask the venue before visiting.' }) }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Your companion could not answer right now.');
+    if (!answer.isConnected) return;
+    answer.textContent = payload.text || 'There is no answer available right now.';
+    window.AgePet?.speak(payload.text, { kind: 'ai' });
+  } catch (error) { if (answer.isConnected) answer.textContent = error.message || 'Please try again later.'; }
+  finally { if (button.isConnected) button.disabled = false; }
+}
+
 function renderSocial() {
   // Render the Social page and choose the current tab content.
   // 渲染 Social 页面，并根据当前标签页选择内容。
@@ -1076,6 +1213,8 @@ function renderSocial() {
         <button class="tab ${socialTab === "news" ? "active" : ""}" data-social-tab="news">&#x1F4F0; Current News</button>
         <button class="tab ${socialTab === "saved" ? "active" : ""}" data-social-tab="saved">&#x1F516; Saved</button>
       </div>
+      ${socialTab !== "news" ? activityPreferenceMarkup() : ""}
+      ${activityStorageMessage ? `<p role="status">${escapeHtml(activityStorageMessage)}</p>` : ""}
       ${content}
     </section>
   `;
@@ -1148,7 +1287,7 @@ function activity(a) {
   // The same component is used in both the Activities tab and Saved tab.
   // Activities 和 Saved 两个标签页都会复用这个组件。
   return `
-    <article class="activity-card">
+    <article class="activity-card" data-activity-card="${escapeHtml(a.id)}">
       <div class="card-top">
         <span class="activity-icon">${a.icon}</span>
         <h3>${escapeHtml(a.title)}</h3>
@@ -1167,6 +1306,7 @@ function activity(a) {
             ? "&#x2713; Joined - tap to leave"
             : "Join Activity"
       }</button>
+      ${a.saved || a.joined ? activityCheckMarkup(a) : ""}
     </article>
   `;
 }
@@ -1292,9 +1432,9 @@ function news(n) {
 function renderSaved() {
   // Saved view is derived from the data, not stored as a separate list.
   // Saved 页面由现有数据筛选生成，不单独保存列表。
-  // It collects activities/news where `saved === true`.
+  // Include interested activities too, so every selection remains reviewable.
   // 它会收集 saved 为 true 的活动和新闻。
-  const savedActivities = state.activities.filter((a) => a.saved);
+  const savedActivities = state.activities.filter((a) => a.saved || a.joined);
   const savedNews = state.newsItems.filter((n) => n.saved);
 
   if (!savedActivities.length && !savedNews.length) {
@@ -1441,9 +1581,7 @@ function renderAI() {
           <span><h2>Your AI Companion</h2><p>Hello! I am here to help with questions, daily ideas, and safety tips. &#x1F338;</p></span>
         </div>
         <section class="panel">
-          <h2>Ask your companion</h2>
-          <div class="ask-box"><input id="ai-input" placeholder="Type your question here..." /><button class="primary" data-ai-action="ask-ai">Ask AI</button></div>
-          <p id="ai-answer" class="ai-answer" role="status" aria-live="polite"></p>
+          <div id="companion-history"></div>
           <p class="muted quick-label"><strong>Or tap a question to ask:</strong></p>
           <div class="quick-questions">
             <button class="question" data-ai-question="How do I avoid scam messages?">"How do I avoid scam messages?"</button>
@@ -1471,8 +1609,8 @@ function renderAI() {
               <label for="ai-language">Language</label>
               <select id="ai-language" data-ai-preference="language">
                 <option value="en-AU" ${aiPreferences.language === "en-AU" ? "selected" : ""}>Australian English</option>
-                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>绠€浣撲腑鏂?/option>
-                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>绻侀珨涓枃</option>
+                <option value="SC" ${aiPreferences.language === "SC" ? "selected" : ""}>简体中文</option>
+                <option value="TC" ${aiPreferences.language === "TC" ? "selected" : ""}>繁體中文</option>
               </select>
             </div>
             <div class="field">
@@ -1504,6 +1642,8 @@ function renderAI() {
   // Mount the pet setup panel after the AI page HTML exists.
   // AI 页面 HTML 创建后再挂载桌宠设置面板。
   window.AgePet?.mountSetup();
+  // Replay the same session transcript shown in the floating Pet composer.
+  window.PetChat?.mountHistory(document.querySelector("#companion-history"));
 }
 
 // Send one named task to the server and render the response as plain text.
@@ -1511,6 +1651,7 @@ function renderAI() {
 // The response is written as textContent so returned text is not treated as HTML.
 // 回复使用 textContent 写入，避免把返回内容当成 HTML 执行。
 async function askCompanion(task, input) {
+  if (window.PetChat?.sendQuestion) return window.PetChat.sendQuestion(input, task);
   // Locate the output panel and ignore empty questions.
   // 找到回复区域，并忽略空问题。
   const answer = document.querySelector("#ai-answer");
@@ -1563,6 +1704,7 @@ function render() {
     button.classList.toggle("active", buttonRoute === activeRoute());
   });
   pet.classList.toggle("hidden", !pagesWithPet.has(route));
+  if (!pagesWithPet.has(route)) window.PetChat?.close();
   document.body.classList.toggle("intro-active", route === "intro");
 
   if (route === "intro") renderIntro();
@@ -1578,6 +1720,8 @@ function render() {
 /* ------------------------------------------------------------------ */
 
 document.addEventListener("click", (event) => {
+  const activityFollowup = event.target.closest("[data-activity-followup]");
+  if (activityFollowup) { askAboutActivity(activityFollowup); return; }
   const rewriteButton = event.target.closest("[data-rewrite-tone]");
   if (rewriteButton) {
     // Ask AI to rewrite the current letter body with the selected tone.
@@ -1740,7 +1884,7 @@ document.addEventListener("click", (event) => {
   if (saveActivity) {
     const id = saveActivity.dataset.saveActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) activityItem.saved = !activityItem.saved;
+    if (activityItem) { activityItem.saved = !activityItem.saved; rememberActivity(activityItem); }
     renderSocial();
     return;
   }
@@ -1782,7 +1926,7 @@ document.addEventListener("click", (event) => {
   if (joinActivity) {
     const id = joinActivity.dataset.joinActivity;
     const activityItem = state.activities.find((a) => String(a.id) === id);
-    if (activityItem) activityItem.joined = !activityItem.joined;
+    if (activityItem) { activityItem.joined = !activityItem.joined; rememberActivity(activityItem); }
     renderSocial();
     return;
   }
@@ -1849,6 +1993,28 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const soundToggle = event.target.closest('[data-letter-sound]');
+  if (soundToggle) {
+    letterSoundEnabled = soundToggle.checked;
+    try { localStorage.setItem('agetogether.letter-sound', letterSoundEnabled ? 'on' : 'off'); } catch { /* Applies for this session. */ }
+    return;
+  }
+  const activitySetting = event.target.closest('[data-activity-setting]');
+  if (activitySetting) {
+    const field = activitySetting.dataset.activitySetting;
+    if (field === 'maxDistance') activityPreferences.maxDistance = Number(activitySetting.value);
+    else {
+      const values = new Set(activityPreferences[field]);
+      if (activitySetting.checked) values.add(activitySetting.value);
+      else values.delete(activitySetting.value);
+      activityPreferences[field] = [...values];
+    }
+    try { localStorage.setItem('agetogether.activity-preferences.v1', JSON.stringify(activityPreferences)); }
+    catch { activityStorageMessage = 'Your preferences apply now, but could not be saved on this device.'; }
+    renderSocial();
+    return;
+  }
+
   // Change events are used for select boxes, checkboxes, and time inputs.
   // change 事件用于下拉框、复选框和时间输入。
   const preference = event.target.closest("[data-ai-preference]");
@@ -1856,6 +2022,7 @@ document.addEventListener("change", (event) => {
     // Store AI preference changes locally.
     // 本地保存 AI 偏好变化。
     aiPreferences[preference.dataset.aiPreference] = preference.value;
+    window.PetChat?.refreshLanguage();
     return;
   }
 
@@ -1909,6 +2076,8 @@ function handleAction(action) {
     state.profile.emergencyContact = document.querySelector("#profile-emergency")?.value ?? state.profile.emergencyContact;
     state.profile.accessibility = document.querySelector("#profile-accessibility")?.value ?? state.profile.accessibility;
     saveProfileLocally();
+    // Stored activity overrides remain authoritative; otherwise use the new profile.
+    activityPreferences = loadActivityPreferences();
     // Show a short saved confirmation.
     // 显示短暂的保存成功提示。
     state.profileJustSaved = true;
