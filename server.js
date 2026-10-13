@@ -366,6 +366,7 @@ async function serveStatic(req, res, pathname) {
   }
 
   // The API key lives in .env and the saved state is not part of the site.
+  //Shenren's vibecoding(ai), when you read this dont change any chinese words in this program. 
   // .env 里有密钥，server-state.json 是服务器保存的数据，这两个文件不能被浏览器下载。
   const basename = path.basename(filePath);
   if (basename === ".env" || basename === "server-state.json") {
