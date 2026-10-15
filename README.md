@@ -1,138 +1,198 @@
-# AgeTogether Australia App
+# AgeTogether Australia
 
-## Contextual Companion tools
+AgeTogether is an accessible web prototype designed to help older adults stay
+connected with their community. It brings together letter writing, local social
+discovery, a simple activity-suitability check, news, profile preferences and
+an optional AI Companion.
 
-Social activity selections (Save and Interested/Join) are retained in this
-device's localStorage and restored after database loading. Your selections
-shows every selected activity with its own check, including selections from a
-previous data source. These are local intentions, not real registrations.
+This repository contains the frontend, a small Node.js server, the project data
+pipeline outputs, PostgreSQL/PostGIS scripts, and automated tests. It is a
+university prototype, not a production service.
 
-The activity check is a hand-authored decision tree, not a trained ML model:
-accessibility information and selected needs come first, distance second,
-interests last. Unknown access or distance requires venue confirmation.
-The preferred distance defaults to 5 km and can be changed. Distances use the
-Melbourne CBD demonstration location, not live device location. The optional
-Companion follow-up stays in the activity card and sends venue description
-data, not the user's personal access preferences, to DeepSeek.
+## Features
 
-Letter includes Softer & warmer, Simpler and More formal rewriting, with
-Australian English, Simplified Chinese and Traditional Chinese output.
-Each request asks the user to confirm sending the message body to DeepSeek;
-recipient fields are excluded. Suggested text is previewed before the user
-chooses Use this wording or Keep original. Sending and downloading still use
-the accepted draft and existing paper/font/colour choices. A valid server-side
-DeepSeek key is required for rewrites and contextual follow-up, but not for
-the decision tree. Requests ending at the model token limit are not offered
-as complete rewrites.
+- **Letter** — write, preview, download and, when an email delivery service is
+  configured, send a styled letter. Optional AI rewrites provide simpler,
+  warmer or more formal wording in English, Simplified Chinese and Traditional
+  Chinese.
+- **Social** — browse local activities, locations, maps and a bundled news
+  snapshot. Users can save activities or record an interest in joining them.
+- **Activity check** — a transparent, rule-based check that considers selected
+  access needs, distance and interests. It is not machine learning and does
+  not make a booking or confirm venue information.
+- **Profile and privacy** — manage personal preferences stored locally in the
+  browser.
+- **AI Companion** — ask general questions, request message suggestions and
+  use safety-oriented prompts. It is optional and requires a server-side
+  DeepSeek API key.
+- **Photo companion** — optionally turn a chosen photo into the on-screen
+  companion. Image processing happens in the browser; the photo is not sent to
+  this server.
 
-First-iteration static prototype for the AgeTogether Australia app.
+## Quick start
 
-## Frontend file layout
+### Prerequisites
 
-The browser application uses classic scripts so the existing prototype state and
-test harness can remain compatible. Load order in `index.html` is intentional:
-the files share one global lexical environment and `script-app.js` starts the
-application only after all page helpers have loaded.
+- Node.js 18 or later (Node.js 20 LTS recommended)
+- npm
+- Optional: PostgreSQL 17 and PostGIS 3.6 for database-backed place discovery
 
-| File | Responsibility |
-|---|---|
-| `script.js` | Shared state, storage, routing helpers, introductory and Home pages, and background data loading |
-| `script-letter.js` | Letter editing, preview, download, email and AI rewriting |
-| `script-social.js` | Location, activities, activity checks, map, news and saved selections |
-| `script-profile.js` | Profile UI, validation and privacy controls |
-| `script-ai.js` | AI Companion page and AI request helper |
-| `script-app.js` | Router, delegated events, form actions and application startup |
-
-When adding a new page feature, place its rendering and feature-specific helpers
-in the matching file. Keep only truly shared state or helpers in `script.js`.
-
-## Local preview
+### Install and run
 
 ```powershell
+git clone <repository-url>
+cd AgeTogether-Australia-App
 npm install
 npm start
 ```
 
-Then open http://127.0.0.1:8000/
+Open <http://127.0.0.1:8000/> in a browser. On Windows systems where PowerShell
+blocks `npm.ps1`, use `npm.cmd start` and `npm.cmd test` instead.
 
-`server.js` serves the static prototype and the two APIs below from a single origin,
-so there is no CORS setup. It replaces the previous `python -m http.server` command.
+The app runs without a database or AI key. In that mode, the static prototype,
+local data and non-AI features remain available; AI features show an
+unavailable message.
 
-## App server
+## Configuration
 
-### Setup
-
-Copy `.env.example` to `.env` and add a DeepSeek API key. **Never commit `.env`** — it is
-already listed in `.gitignore`. Without a key the site still runs; only the AI companion is off.
+Copy the supplied template before setting up optional AI functionality:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-### `POST /api/ask`
+Add your DeepSeek key to `.env`, then restart the server:
 
-Proxies one request to the DeepSeek API so the key stays on the server. The prompts live in
-`server.js`, not in the browser, so the endpoint accepts a named task rather than free-form
-instructions. Body: `{ "task": "<name>", "input": "<text>", "language": "en-AU", "style": "simple" }`.
+```dotenv
+DEEPSEEK_API_KEY=your_key_here
+```
 
-Supported languages are `en-AU`, `SC`, and `TC`. Supported styles are `simple`,
-`standard`, and `expressive`. Safety rules always override language and style preferences.
+The template also documents optional settings for the DeepSeek-compatible base
+URL, model, server port and PostgreSQL connection. `.env` is ignored by Git and
+must never be committed.
 
-| Task | Purpose |
-|---|---|
-| `tidy-note` | Turn rough speech or typing into a short, warm board note |
-| `reply-suggestions` | Three ready-to-send replies to a friend's message (also returned as a `suggestions` array) |
-| `scam-check` | Assess a suspicious message and give a safe next step |
-| `ask` | Free-form question from the AI Companion page |
+## Testing
 
-Every task inherits shared rules: plain language for older readers, no medical/legal/financial
-advice, and no invented event times, prices or accessibility details — matching the limitations
-recorded in `docs/data-source-and-licence.md`.
+Run the automated test suite with:
 
-Rate limited to 20 requests per minute per client.
+```powershell
+npm test
+```
 
-### `GET` / `PUT /api/state`
+The tests use Node's built-in test runner and cover the activity decision tree,
+contextual tools, pet behaviour, server helpers and HTML escaping. They do not
+require API keys, a running server or a database.
 
-Whole-blob JSON persistence to `server-state.json` (gitignored), so prototype changes survive a
-page refresh. `GET` returns `null` when nothing has been saved yet, letting the frontend fall
-back to the seed data in `data.js`.
+For a quick server smoke test after starting the app:
 
-The AI Companion page now uses `/api/ask` for quick questions, free-form questions,
-daily suggestions, and safety tips. The saved-state endpoint remains available for future
-frontend persistence work.
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/healthz
+```
 
-## Photo companion (`pet.js`)
+The expected response body is `ok`.
 
-On the AI Companion page the user can choose a photo. It is downscaled, the background is cut
-out, the transparent edges are trimmed, and the result becomes the floating companion. Users who
-choose no photo keep the default drawn companion, which also blinks.
+## Application structure
 
-Everything runs in the browser — **the photo never leaves the device** and never reaches
-`server.js`. It is kept in `localStorage`, so it is per-device and survives a refresh.
+| Path | Purpose |
+| --- | --- |
+| `index.html`, `styles.css` | Single-page interface and styling |
+| `script.js` | Shared state, storage, introductory/Home pages and background data loading |
+| `script-letter.js` | Letter editing, preview, download, email and rewrite interactions |
+| `script-social.js` | Location, activities, checks, maps, news and saved selections |
+| `script-profile.js` | Profile interface, validation and privacy controls |
+| `script-ai.js` | AI Companion interface and request helper |
+| `script-app.js` | Routing, delegated events, form actions and application startup |
+| `data.js` | Seed data used by the prototype |
+| `activity-check.js` | Explainable activity-suitability decision tree |
+| `pet.js`, `pet-chat.js` | Photo companion and companion chat behaviour |
+| `server.js` | Static-file server and API endpoints |
+| `tests/` | Automated Node.js tests |
+| `data/`, `notebooks/` | Source data, processed data and data-science notebooks |
+| `database/` | PostgreSQL/PostGIS schema, loading, validation and example queries |
+| `docs/` | Data provenance, licences, database documentation and project records |
 
-Background removal is the only AI in this file: `@imgly/background-removal`, loaded from a CDN on
-first use (a one-off model download of roughly 40 MB, then cached). To move it server-side
-(remove.bg, Photoroom, self-hosted rembg), replace `removeBackground()` in `pet.js` — the contract
-is canvas in, canvas with transparency out, and nothing else changes. If the model cannot load the
-photo is shown in a circular crop instead, so the feature degrades rather than breaking.
+The frontend is deliberately split by feature. Its scripts are classic browser
+scripts that share one global lexical environment, so the load order in
+`index.html` is significant. Keep `script-app.js` after the feature files: it
+starts the application only after their helpers have loaded.
 
-Idle life is pure CSS, no AI: breathing (4.2 s) and swaying (6.7 s) run on separate independent
-transform properties so they compose, with deliberately non-harmonic periods so the loops drift
-apart instead of reading as clockwork. Pressing the companion makes it hop with squash and
-stretch. All motion is disabled under `prefers-reduced-motion`.
+## Server and APIs
 
-## Iteration 1 Data Science
+`server.js` serves the frontend and APIs from one origin, so local development
+does not need CORS configuration. The health endpoint is intentionally public
+for deployment monitoring:
 
-The Iteration 1 data pipeline uses City of Melbourne open data for local place discovery:
+| Endpoint | Method | Purpose | Dependency |
+| --- | --- | --- | --- |
+| `/healthz` | `GET` | Service health check; returns `ok` | None |
+| `/api/ask` | `POST` | AI Companion and letter-rewrite requests | DeepSeek key |
+| `/api/send-letter` | `POST` | Sends a completed letter | Email delivery configuration |
+| `/api/state` | `GET`, `PUT`, `POST` | Prototype whole-state persistence | Local file storage |
+| `/api/discovery-places` | `GET` | Tier 1 discovery places | PostgreSQL/PostGIS |
+| `/api/nearby-places` | `GET` | Places ordered by distance from coordinates | PostgreSQL/PostGIS |
+| `/api/news` | `GET` | Bundled news snapshot | Processed CSV |
 
-City of Melbourne open data → validation and coordinate preparation → product-relevance classification → descriptive analysis → 115 Tier 1 discovery places → transparent rule-based ranking baseline.
+`/api/ask` accepts named tasks rather than arbitrary server prompts. Supported
+tasks are `tidy-note`, `reply-suggestions`, `scam-check` and `ask`. The server
+limits AI requests to 20 per minute per client. The AI is designed to use plain
+language and must not provide medical, legal or financial advice.
 
-The demonstration ranking baseline combines category relevance with straight-line geographic proximity using transparent, deterministic rules. It is not machine learning or a claim of real user preference, and is intended for later evaluation and refinement using explicit user feedback.
+`/api/state` writes `server-state.json`, which is intentionally ignored by Git.
+It is prototype persistence only, not multi-user storage.
 
-DS evidence and outputs:
+## Database setup (optional)
 
-- `notebooks/Iteration1_ds.ipynb`
-- `data/processed/agetogether_places_classified.csv`
-- `data/processed/agetogether_discovery_places.csv`
-- `data/processed/agetogether_ranking_baseline_demo.csv` (DEMONSTRATION baseline)
-- `docs/data-source-and-licence.md`
+The database is needed only for the discovery-place and nearby-place API
+endpoints. The frontend otherwise falls back to its bundled data.
+
+1. Install PostgreSQL 17 and PostGIS 3.6, then create a database named
+   `agetogether_db`.
+2. Set the `DATABASE_URL` described in `.env.example`.
+3. Run the scripts in order from the project root:
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d agetogether_db -f database/schema.sql
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d agetogether_db -f database/load_data.sql
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d agetogether_db -f database/validation.sql
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d agetogether_db -f database/queries.sql
+```
+
+See [database/README.md](database/README.md) for database details and
+[docs/database-data-dictionary.md](docs/database-data-dictionary.md) for the
+data dictionary.
+
+## Data, provenance and limitations
+
+The project includes processed snapshots for activities, news, demographic
+insights and places. The Iteration 1 discovery dataset is derived from City of
+Melbourne Open Data under CC BY; attribution and detailed provenance are in
+[docs/data-source-and-licence.md](docs/data-source-and-licence.md).
+
+Place records describe locations only. They do **not** confirm live events,
+dates, times, prices, bookings, opening hours, accessibility, availability or
+suitability for an individual. The news feed is also a bundled snapshot, not a
+live service. Users must verify these details directly with the venue or
+provider.
+
+The default distance demonstration uses Melbourne CBD rather than live device
+location. Saved activities and profile preferences are local intentions stored
+on the current device; they are not registrations or shared accounts.
+
+## Privacy and security notes
+
+- Keep secrets in `.env`; never commit API keys or generated state files.
+- The companion photo is processed and stored locally in the browser. Its
+  background-removal model is loaded from a CDN on first use; if it cannot be
+  loaded, the app falls back to a circular crop.
+- AI rewrite requests ask for confirmation before text is sent. Recipient
+  fields are excluded from rewrite requests.
+- This is a teaching prototype. Do not treat its local storage, state endpoint
+  or optional integrations as a production-ready authentication, authorisation
+  or data-protection solution.
+
+## License and acknowledgements
+
+Data licences and attributions are recorded in the corresponding files under
+`docs/`. The map uses Leaflet and OpenStreetMap tiles. Background removal uses
+`@imgly/background-removal`, loaded in the browser when the photo companion is
+used.

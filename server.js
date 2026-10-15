@@ -905,7 +905,13 @@ const server = createServer(async (req, res) => {
   // 整站账号密码保护入口。
   // Require the review password before serving static files or API responses.
   // 静态页面和 API 都先经过密码保护，确保测试网站不是完全公开访问。
-  // Temporarily disabled: site-wide username/password protection.
+  // Deliberate handover decision: site-wide Basic Auth is disabled for the
+  // current teaching/demo build, so assessors can open the deployed prototype
+  // without credentials. The implementation is retained below for a future
+  // restricted review build; it is not production-grade authentication.
+  // To re-enable it, uncomment the next line and configure non-default
+  // credentials in the deployment environment. Keep /healthz outside this
+  // check so the hosting platform can still perform its health check.
   // 目前为了展示方便暂时关闭；需要恢复时取消下一行注释。
   // if (!checkBasicAuth(req, res)) return;
 
