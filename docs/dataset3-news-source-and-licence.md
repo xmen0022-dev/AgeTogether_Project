@@ -7,11 +7,17 @@
 - **Feed type:** Official SBS News Australia RSS feed
 - **Official RSS URL:** https://www.sbs.com.au/news/topic/australia/feed
 - **SBS RSS feed directory:** https://www.sbs.com.au/news/article/feeds/nbv1rs3kw
-- **Local acquisition date:** 3 September 2026
+- **Original Iteration 1 acquisition date:** 3 September 2026
+- **Latest local acquisition date:** 15 October 2026, 14:25 AEDT (03:25 UTC)
+- **Latest acquisition HTTP status:** 200 (official feed)
 - **Raw snapshot:** `data/raw/sbs_news_feed_snapshot.xml`
-- **SHA-256:** `5a4cf94543aca33dcbb38e74e8837672710fbc6626cad30d327aa7cc3dc6218b`
+- **Latest raw SHA-256:** `ccce3a87933e27d91fa196a3da311daa7d8410222d8c6b5e1bb9cbea77ba7ded`
+- **Archived Iteration 1 snapshot:** `data/raw/sbs_news_feed_snapshot_2026-09-03.xml` (SHA-256: `5a4cf94543aca33dcbb38e74e8837672710fbc6626cad30d327aa7cc3dc6218b`)
+- **Archived 12 October 2026 snapshot:** `data/raw/sbs_news_feed_snapshot_2026-10-12.xml` (SHA-256: `b97754f191577441d0b7bc50506ef5cd3d2616e1b9b8a265450a223e4c0d02e6`)
 
-The raw XML file is an unchanged static snapshot of the official RSS feed. It is retained so that the Iteration 1 notebook can reproduce the same metadata processing and output files.
+The current raw XML file is an unchanged static snapshot of the official RSS feed. The September Iteration 1 snapshot and the 12 October 2026 refresh snapshot are retained separately so that historical evidence remains recoverable. The notebook uses the current snapshot and can reproduce the current metadata processing and output files.
+
+The 15 October 2026 refresh returned HTTP 200 from the official feed URL and contains 25 RSS items. All 25 publication dates parsed successfully; the publication-date range is 10 October 2026 19:44 UTC to 14 October 2026 18:39 UTC. The refresh produced 25 cleaned/classified records and 23 Included prototype records. There were no exact duplicate records, duplicate titles or duplicate article URLs. The same CSV was successfully validated against the local `GET /api/news` endpoint in an isolated test worktree; because the API maintains an in-memory CSV cache, a server restart is required after a CSV replacement.
 
 ## Static RSS approach
 
