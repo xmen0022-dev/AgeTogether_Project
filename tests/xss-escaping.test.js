@@ -1,10 +1,12 @@
-// Renders real builders from script.js with hostile input.
+// Renders real builders from the split application scripts with hostile input.
 // The property under test is that no user-supplied "<" survives as a tag.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
+const source = [
+  "script.js", "script-letter.js", "script-social.js", "script-profile.js", "script-ai.js", "script-app.js",
+].map((file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8")).join("\n");
 
 function extract(name, ...deps) {
   const escape = source.indexOf("function escapeHtml(");
@@ -14,9 +16,13 @@ function extract(name, ...deps) {
   const start = source.indexOf(`function ${name}(`);
   const end = source.indexOf("\nfunction ", start + 1);
   const helper = name === "letterPreviewMarkup" && complete >= 0 ? `\n${source.slice(complete, completeEnd)}` : "";
+  // profileField has two small module-level collaborators in the real app.
+  const profileSupport = name === "profileField"
+    ? "const profileValidationErrors = {}; function profileError() { return ''; }"
+    : "";
   return new Function(
     ...deps,
-    `${source.slice(escape, escapeEnd)}${helper}\n${source.slice(start, end)}\nreturn ${name};`,
+    `${source.slice(escape, escapeEnd)}${helper}\n${profileSupport}\n${source.slice(start, end)}\nreturn ${name};`,
   );
 }
 

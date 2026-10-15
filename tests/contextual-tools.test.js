@@ -28,7 +28,10 @@ function appFixture(records = new Map(), { storageDenied = false } = {}) {
     get() { throw new Error('Storage denied'); },
   });
   vm.createContext(context);
-  for (const file of ['data.js', 'activity-check.js', 'script.js']) vm.runInContext(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), context);
+  for (const file of [
+    'data.js', 'activity-check.js', 'script.js', 'script-letter.js',
+    'script-social.js', 'script-profile.js', 'script-ai.js', 'script-app.js',
+  ]) vm.runInContext(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), context);
   const run = (code) => vm.runInContext(code, context);
   const click = (selector, dataset = {}) => handlers.click({ target: { closest: (query) => query === selector ? { dataset } : null } });
   return { app, tools, run, click, context, calls, records, change: (event) => handlers.change(event) };

@@ -27,6 +27,25 @@ as complete rewrites.
 
 First-iteration static prototype for the AgeTogether Australia app.
 
+## Frontend file layout
+
+The browser application uses classic scripts so the existing prototype state and
+test harness can remain compatible. Load order in `index.html` is intentional:
+the files share one global lexical environment and `script-app.js` starts the
+application only after all page helpers have loaded.
+
+| File | Responsibility |
+|---|---|
+| `script.js` | Shared state, storage, routing helpers, introductory and Home pages, and background data loading |
+| `script-letter.js` | Letter editing, preview, download, email and AI rewriting |
+| `script-social.js` | Location, activities, activity checks, map, news and saved selections |
+| `script-profile.js` | Profile UI, validation and privacy controls |
+| `script-ai.js` | AI Companion page and AI request helper |
+| `script-app.js` | Router, delegated events, form actions and application startup |
+
+When adding a new page feature, place its rendering and feature-specific helpers
+in the matching file. Keep only truly shared state or helpers in `script.js`.
+
 ## Local preview
 
 ```powershell
